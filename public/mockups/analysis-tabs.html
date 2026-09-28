@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PokerTerior · Analysis tabs mockup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="../poketerior-dashboard.css" />
+    <style>
+      :root {
+        --pt-bg: #070d0b;
+        --pt-s1: #101a17;
+        --pt-s2: #16231f;
+        --pt-bd: #24362f;
+        --pt-tx: #f2f5f3;
+        --pt-t2: #b8c4bf;
+        --pt-mu: #8a9993;
+        --pt-ac: #34d399;
+        --pt-bet: #f5b544;
+        --pt-bad: #f07167;
+      }
+      body { font-family: Inter, system-ui, sans-serif; background: var(--pt-bg); }
+      [hidden] { display: none !important; }
+      .mock-note { margin: 0 0 8px; padding: 8px 12px; border: 1px dashed var(--pt-bd); border-radius: 8px; color: var(--pt-t2); font-size: 12px; }
+
+      .ws { color: var(--pt-tx); font-size: 14px; line-height: 1.55; }
+      .ws * { box-sizing: border-box; }
+      .ws code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; color: var(--pt-tx); }
+      .ws .card { background: var(--pt-s1); border: 1px solid var(--pt-bd); border-radius: 12px; padding: 16px 18px; }
+      .ws .lbl { margin: 0 0 8px; color: var(--pt-t2); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+      .ws .row { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--pt-bd); }
+      .ws .row:last-child { border-bottom: 0; }
+      .ws .row > span:first-child { color: var(--pt-t2); }
+      .ws .row > span:last-child { font-weight: 500; text-align: right; }
+      .ws .badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 7px; font-weight: 500; font-size: 14px; }
+      .ws .badge.bet { background: var(--pt-bet); color: #3a2503; }
+      .ws .badge.ok { background: #0f3b2c; color: var(--pt-ac); font-size: 12px; }
+      .ws .chip { background: var(--pt-s2); color: var(--pt-t2); font-size: 12px; padding: 3px 10px; border-radius: 6px; }
+      .ws .m { background: var(--pt-s1); border: 1px solid var(--pt-bd); border-radius: 10px; padding: 12px 14px; }
+      .ws .m span { display: block; color: var(--pt-t2); font-size: 13px; }
+      .ws .m b { font-weight: 500; font-size: 24px; }
+      .ws .grid { display: grid; gap: 12px; }
+      .ws .c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .ws .c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .ws .c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .ws .span2 { grid-column: span 2; }
+
+      .summary { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 14px 18px; }
+      .cards { display: flex; gap: 6px; }
+      .pc { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 42px; height: 58px; background: #f4f1e8; border-radius: 6px; font-weight: 500; font-size: 17px; line-height: 1.1; color: #1a1a1a; }
+      .pc.r { color: #c0322b; }
+      .pc.q { background: var(--pt-s2); color: var(--pt-mu); border: 1px dashed var(--pt-bd); }
+      .divider { width: 1px; align-self: stretch; background: var(--pt-bd); }
+
+      .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--pt-bd); margin: 16px 0 16px; overflow-x: auto; }
+      .tab { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--pt-t2); padding: 11px 18px; font: inherit; font-size: 14px; cursor: pointer; border-radius: 8px 8px 0 0; }
+      .tab:hover { color: var(--pt-tx); }
+      .tab[aria-selected="true"] { color: var(--pt-tx); border-color: var(--pt-ac); background: var(--pt-s2); font-weight: 500; }
+      .tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--pt-ac); margin-left: 6px; vertical-align: middle; }
+
+      .bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 6px 0 10px; }
+      .evo { display: flex; align-items: center; gap: 10px; }
+      .evo .m { flex: 1; }
+      .reason p { margin: 0 0 10px; max-width: 72ch; line-height: 1.65; }
+      .link { color: var(--pt-ac); font-size: 13px; cursor: pointer; }
+
+      .rm-grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; }
+      .rm-cell { aspect-ratio: 1; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 500; background: var(--pt-s2); color: var(--pt-mu); transition: opacity 0.12s ease; }
+      .rm-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--pt-t2); }
+      .rm-legend span { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+      .rm-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
+
+      @media (max-width: 900px) {
+        .ws .c3, .ws .c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ws .span2 { grid-column: auto; }
+      }
+      @media (max-width: 560px) {
+        .ws .c2, .ws .c3, .ws .c4 { grid-template-columns: minmax(0, 1fr); }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div class="brand-lockup">
+            <div>
+              <h1 aria-label="PokerTerior">
+                <span class="brand-word-poke">Poker</span><span class="brand-word-terior">Ter<span class="brand-i" aria-hidden="true"><span class="brand-spade">♠</span></span>or</span>
+              </h1>
+              <p>Posterior reasoning for better poker decisions</p>
+            </div>
+          </div>
+          <nav class="product-nav" aria-label="Primary navigation">
+            <button type="button">Home</button>
+            <button class="is-active" type="button">Hand Analyzer</button>
+            <button type="button">Range Explorer</button>
+            <button type="button">Sessions</button>
+            <button type="button">Coach</button>
+          </nav>
+          <div class="account-actions"><span class="user-chip">JD</span></div>
+        </header>
+
+        <p class="mock-note">Static mockup. Sample data only, not wired to the analyzer.</p>
+
+        <section class="ws" aria-label="Analysis workspace mockup">
+          <div class="card summary">
+            <div>
+              <p class="lbl">Hero</p>
+              <div class="cards"><span class="pc">10<br />♠</span><span class="pc r">10<br />♥</span></div>
+            </div>
+            <div>
+              <p class="lbl">Board</p>
+              <div class="cards"><span class="pc r">8<br />♥</span><span class="pc">2<br />♠</span><span class="pc r">Q<br />♥</span><span class="pc q">?</span><span class="pc q">?</span></div>
+            </div>
+            <div class="divider"></div>
+            <div style="flex: 1; min-width: 220px">
+              <p class="lbl">Flop · hero first to act · pot 18.7 bb</p>
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+                <span class="badge bet" style="font-size: 18px; padding: 6px 16px">Bet</span>
+                <span class="badge ok">✓ AI and TexasSolver agree</span>
+                <span style="color: var(--pt-t2); font-size: 13px">Solver: bet 72.3%</span>
+              </div>
+            </div>
+          </div>
+
+          <nav class="tabs" role="tablist" aria-label="Analysis views">
+            <button class="tab" role="tab" data-t="ranges">Ranges</button>
+            <button class="tab" role="tab" data-t="equity">Equity</button>
+            <button class="tab" role="tab" data-t="ai">AI analysis<span class="dot" aria-hidden="true"></span></button>
+            <button class="tab" role="tab" data-t="bd">Breakdown</button>
+          </nav>
+
+          <section data-p="ranges" role="tabpanel" class="grid c3">
+            <div class="card span2">
+              <div style="display: flex; justify-content: space-between; align-items: baseline">
+                <p class="lbl">Villain estimated range · MP 3-bet vs UTG open</p>
+                <span style="color: var(--pt-ac); font-weight: 500; font-size: 18px">97 combos</span>
+              </div>
+              <code>TT–AA, AJs, KQs, QJs, JTs, T9s–32s, A2s–A5s, KTo, QJo, JTo</code>
+              <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; color: var(--pt-t2)">
+                <span>Confidence <b style="color: var(--pt-tx); font-weight: 500">medium</b></span>
+                <span>Model <b style="color: var(--pt-tx); font-weight: 500">nemotron-3-super-120b</b></span>
+                <span>Drivers <b style="color: var(--pt-tx); font-weight: 500">MP 3-bet vs UTG, loose 6-max</b></span>
+              </div>
+              <p style="margin: 12px 0 0; color: var(--pt-t2); font-size: 13px">Caveat: exact bluff frequency uncertain. Flop range carried from preflop because hero acts before villain.</p>
+            </div>
+            <div class="card">
+              <p class="lbl">Hand types</p>
+              <div class="row"><span>Pocket pairs</span><span>22</span></div>
+              <div class="row"><span>Suited non-pairs</span><span>54</span></div>
+              <div class="row"><span>Offsuit non-pairs</span><span>21</span></div>
+            </div>
+            <div class="card span2">
+              <p class="lbl">Range evolution</p>
+              <div class="evo">
+                <div class="m"><span>Preflop</span><b>109</b></div>
+                <span style="color: var(--pt-mu)">→</span>
+                <div class="m" style="border-color: var(--pt-ac)"><span>Flop · current</span><b>97</b></div>
+                <span style="color: var(--pt-mu)">→</span>
+                <div class="m"><span>Turn</span><b style="color: var(--pt-mu)">—</b></div>
+                <span style="color: var(--pt-mu)">→</span>
+                <div class="m"><span>River</span><b style="color: var(--pt-mu)">—</b></div>
+              </div>
+            </div>
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: baseline">
+                <p class="lbl">Range matrix</p>
+                <span style="color: var(--pt-mu); font-size: 12px">hover a bucket to isolate</span>
+              </div>
+              <div class="rm-grid" id="rangeMatrix"></div>
+              <div class="rm-legend" id="rangeMatrixLegend"></div>
+            </div>
+          </section>
+
+          <section data-p="equity" role="tabpanel">
+            <div class="grid c4">
+              <div class="m"><span>Hero equity</span><b style="color: var(--pt-ac)">48.1%</b></div>
+              <div class="m"><span>Pot odds</span><b>n/a</b></div>
+              <div class="m"><span>Equity share</span><b>+8.99 bb</b></div>
+              <div class="m"><span>Confluence</span><b>57</b></div>
+            </div>
+            <div class="grid c2" style="margin-top: 12px">
+              <div class="card">
+                <p class="lbl">Hand vs range</p>
+                <div class="bar"><div style="width: 61%; background: var(--pt-ac)"></div><div style="width: 2%; background: var(--pt-bet)"></div><div style="width: 37%; background: var(--pt-bad)"></div></div>
+                <div class="row"><span><span style="color: var(--pt-ac)">●</span> Ahead of</span><span>59 combos</span></div>
+                <div class="row"><span><span style="color: var(--pt-bad)">●</span> Behind</span><span>36 combos</span></div>
+                <div class="row"><span><span style="color: var(--pt-bet)">●</span> Near flip</span><span>2 combos</span></div>
+              </div>
+              <div class="card">
+                <p class="lbl">Board texture</p>
+                <div style="font-weight: 500; font-size: 16px">Q-high, two-tone, disconnected</div>
+                <p style="margin: 6px 0 0; color: var(--pt-t2)">Heart flush draw possible. Few straight draws. The queen hits villain's 3-bet range harder than hero's pair.</p>
+              </div>
+            </div>
+          </section>
+
+          <section data-p="ai" role="tabpanel">
+            <div class="card" style="border-color: var(--pt-bet)">
+              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
+                <span class="badge bet" style="font-size: 18px; padding: 6px 16px">Bet</span>
+                <span style="color: var(--pt-t2); font-size: 13px">Coach recommendation · flop, hero first to act</span>
+              </div>
+              <p style="margin: 12px 0 0; font-size: 15px; max-width: 80ch">With 48% equity and 44 combos you beat, bet for value and protection. Villain's capped range folds many overcards to a small bet.</p>
+            </div>
+            <div class="grid c3" style="margin-top: 12px">
+              <div class="card">
+                <div style="display: flex; justify-content: space-between"><p class="lbl">Coach reasoning</p><span style="color: var(--pt-mu); font-size: 12px">nemotron-3-super</span></div>
+                <div class="row"><span>Hero equity vs range</span><span>48.1%</span></div>
+                <div class="row"><span>Pot before bet</span><span>18.7 bb</span></div>
+                <div class="row"><span>Ahead / behind / close</span><span>44 / 42 / 3</span></div>
+                <div class="row"><span>Blockers</span><span>TsTh removes one T</span></div>
+                <div class="link" style="margin-top: 8px">Show full reasoning ▾</div>
+              </div>
+              <div class="card reason">
+                <p class="lbl">Harrington style</p>
+                <p>Middle pair below the queen, out of position against a 3-bettor. Take a small bet to deny equity, then slow down facing a raise.</p>
+                <div class="link">Show retrieved passages ▾</div>
+              </div>
+              <div class="card reason">
+                <p class="lbl">Skill-grounded analysis</p>
+                <p>Range-advantage skill: villain holds more Qx. Protection skill: six overcards fold to a third-pot bet.</p>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="chip">range advantage</span><span class="chip">equity denial</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section data-p="bd" role="tabpanel">
+            <div class="grid c3">
+              <div class="card span2">
+                <p class="lbl">Calculation trail</p>
+                <div class="row"><span>Estimated equity</span><span>48.1% Monte Carlo vs assigned range</span></div>
+                <div class="row"><span>Required equity</span><span>n/a, hero not facing a bet</span></div>
+                <div class="row"><span>Node EV</span><span>48.1% × 18.7 bb = +8.99 bb</span></div>
+                <div class="row"><span>Range blockers</span><span>89 live combos after hero and board</span></div>
+                <div class="row"><span>Decision node</span><span>Flop, before hero check</span></div>
+                <div class="row"><span>Action sequence</span><span>Hero: no action yet</span></div>
+                <div class="row"><span>Combo comparison</span><span>44 ahead / 42 behind / 3 close</span></div>
+                <div class="row"><span>Confluence formula</span><span>50 − 2.7 + 0.4 + 1.3 + 8.0 = 57</span></div>
+              </div>
+              <div style="display: grid; gap: 12px; align-content: start">
+                <div class="card">
+                  <p class="lbl">TexasSolver</p>
+                  <div style="font-weight: 500; font-size: 18px">Bet 72.3%</div>
+                  <div style="color: var(--pt-t2); font-size: 13px; margin-bottom: 10px">Check 27.7% · matched TsTh</div>
+                  <span class="badge ok">✓ Matches AI</span>
+                </div>
+                <div class="card" style="color: var(--pt-t2)">
+                  ▸ Developer details
+                  <div style="color: var(--pt-mu); font-size: 12px; margin-top: 4px">pc_20260926040107_fc410344</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+    <script>
+      const tabs = document.querySelectorAll(".tab");
+      const panes = document.querySelectorAll("[data-p]");
+      function show(t) {
+        tabs.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.t === t)));
+        panes.forEach((p) => (p.hidden = p.dataset.p !== t));
+      }
+      tabs.forEach((b) => b.addEventListener("click", () => show(b.dataset.t)));
+      show(new URLSearchParams(location.search).get("tab") || "ranges");
+
+      (function renderRangeMatrix() {
+        const RANKS = "AKQJT98765432".split("");
+        const BUCKETS = {
+          strong: { color: "#0f6e56", label: "Strong value", hands: ["AA", "KK", "QQ", "JJ", "TT"] },
+          thin: { color: "#185fa5", label: "Thin value / bluff", hands: ["AJs", "KQs", "A5s", "AQs", "AKo"] },
+          draw: { color: "#534ab7", label: "Draws / semi-bluff", hands: ["QJs", "JTs", "T9s", "98s", "87s", "76s", "65s", "54s", "43s", "32s"] },
+          air: { color: "#5f5e5a", label: "Air / fold", hands: [] },
+        };
+        function handName(row, col) {
+          if (row === col) return RANKS[row] + RANKS[col];
+          return row < col ? RANKS[row] + RANKS[col] + "s" : RANKS[col] + RANKS[row] + "o";
+        }
+        function inRange(name) {
+          const pairRank = RANKS.indexOf(name[0]);
+          if (name.length === 2 && name[0] === name[1]) return pairRank <= RANKS.indexOf("T") ? "strong" : "air";
+          for (const [key, b] of Object.entries(BUCKETS)) if (b.hands.includes(name)) return key;
+          if (name.endsWith("o")) return name === "AKo" ? "thin" : "air";
+          return "air";
+        }
+        const grid = document.getElementById("rangeMatrix");
+        const legend = document.getElementById("rangeMatrixLegend");
+        if (!grid || !legend) return;
+        const cells = [];
+        for (let row = 0; row < 13; row += 1) {
+          for (let col = 0; col < 13; col += 1) {
+            const name = handName(row, col);
+            const bucket = inRange(name);
+            const cell = document.createElement("div");
+            cell.className = "rm-cell";
+            cell.dataset.bucket = bucket;
+            cell.textContent = name;
+            cell.style.background = BUCKETS[bucket].color;
+            cell.style.color = "#f2f5f3";
+            cell.title = `${name}: ${BUCKETS[bucket].label}`;
+            grid.appendChild(cell);
+            cells.push(cell);
+          }
+        }
+        Object.entries(BUCKETS).forEach(([key, b]) => {
+          const chip = document.createElement("span");
+          chip.innerHTML = `<i style="background:${b.color}"></i>${b.label}`;
+          chip.addEventListener("mouseenter", () => cells.forEach((c) => (c.style.opacity = c.dataset.bucket === key ? "1" : "0.15")));
+          chip.addEventListener("mouseleave", () => cells.forEach((c) => (c.style.opacity = "1")));
+          legend.appendChild(chip);
+        });
+      })();
+    </script>
+  </body>
+</html>

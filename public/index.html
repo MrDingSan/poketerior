@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PokerTerior</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./poketerior-dashboard.css" />
+    <link rel="stylesheet" href="./import-engine/import-engine.css" />
+    <link rel="stylesheet" href="./design-tokens.css" />
+    <link rel="stylesheet" href="./hand-stage.css" />
+    <link rel="stylesheet" href="./analysis-workspace.css" />
+    <link rel="stylesheet" href="./import-screen.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div class="brand-lockup">
+            <div>
+              <h1 aria-label="PokerTerior">
+                <span class="brand-word-poke">Poker</span><span class="brand-word-terior">Ter<span class="brand-i" aria-hidden="true"><span class="brand-spade">♠</span></span>or</span>
+              </h1>
+              <p>Posterior reasoning for better poker decisions</p>
+            </div>
+          </div>
+          <nav class="product-nav" aria-label="Primary navigation">
+            <button type="button">Home</button>
+            <button class="is-active" type="button">Hand Analyzer</button>
+            <button type="button">Range Explorer</button>
+            <button type="button">Sessions</button>
+            <button type="button">Coach</button>
+          </nav>
+          <label class="topbar-search" aria-label="Search">
+            <svg class="topbar-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="search" placeholder="Search hands, spots, or concepts…" />
+            <kbd>⌘K</kbd>
+          </label>
+          <div class="account-actions" aria-label="Account actions">
+            <span class="user-chip">JD</span>
+          </div>
+          <button id="resetHandBtn" class="primary-btn new-hand-btn" type="button">
+            <span aria-hidden="true">＋</span> New Hand
+          </button>
+        </header>
+
+        <nav class="mode-tabs" aria-label="Input mode">
+          <button id="importModeBtn" class="mode-tab" type="button"><span aria-hidden="true">▣</span><strong>Screenshot Import</strong><small>Import a hand from an image</small></button>
+          <button id="quickEntryModeBtn" class="mode-tab" type="button" disabled title="Quick Entry is coming soon"><span aria-hidden="true">ϟ</span><strong>Quick Entry</strong><small>Enter a hand quickly</small></button>
+          <button id="manualModeBtn" class="mode-tab is-active" type="button"><span aria-hidden="true">✎</span><strong>Manual Builder</strong><small>Build a hand step by step</small></button>
+        </nav>
+
+        <section id="importSection" class="panel input-panel import-panel is-hidden" data-import-state="empty" aria-label="Screenshot hand history import">
+          <div id="importDropzone" class="import-dropzone" tabindex="0">
+            <input id="screenshotInput" type="file" accept="image/*" aria-label="Choose a hand-history screenshot" />
+            <span class="import-dropzone-icon" aria-hidden="true">⬆</span>
+            <div class="import-dropzone-copy">
+              <strong>Drop a hand-history screenshot</strong>
+              <p>PNG or JPG. The hand is read for you, then you can check it before analyzing.</p>
+            </div>
+            <div class="import-dropzone-actions">
+              <span class="import-dropzone-button">Choose screenshot</span>
+              <span class="import-dropzone-hint">or paste from your clipboard</span>
+            </div>
+          </div>
+          <aside class="import-help" aria-label="How screenshot import works">
+            <div>
+              <span class="import-help-label">How it works</span>
+              <ol class="import-help-steps">
+                <li><span aria-hidden="true">1</span><div><strong>Upload</strong><small>Drop or paste a screenshot of the hand.</small></div></li>
+                <li><span aria-hidden="true">2</span><div><strong>Check</strong><small>Review the cards and actions we read. Fix anything that looks off.</small></div></li>
+                <li><span aria-hidden="true">3</span><div><strong>Analyze</strong><small>Pick a decision. Likely post-flop spots are prepared while you review.</small></div></li>
+              </ol>
+            </div>
+            <div>
+              <span class="import-help-label">Reads screenshots from</span>
+              <div class="import-help-sites"><span>CoinPoker</span><span>Natural8</span></div>
+            </div>
+          </aside>
+          <div id="importPreview" class="import-preview is-hidden"></div>
+          <dialog id="importPreviewDialog" class="import-preview-dialog" aria-label="Original screenshot">
+            <form method="dialog">
+              <button class="icon-btn import-preview-close" aria-label="Close screenshot">×</button>
+            </form>
+            <img alt="Imported hand-history screenshot" />
+          </dialog>
+          <div id="importStatus" class="import-status">No screenshot imported yet.</div>
+          <div id="importStages" class="import-stages is-hidden"></div>
+          <div id="importSummary" class="import-summary is-hidden"></div>
+          <div id="importDecisions" class="import-decisions is-hidden" aria-hidden="true"></div>
+          <div id="importBuilderWorkspace" class="import-builder-workspace" data-hand-workspace="screenshot"></div>
+        </section>
+
+        <section id="preflopBuilder" class="manual-mode preflop-builder" data-hand-workspace="manual" aria-label="Visual pre-flop hand builder">
+          <section class="panel game-settings-panel" aria-labelledby="gameSettingsTitle">
+            <div class="compact-panel-heading">
+              <div>
+                <span class="section-kicker">Table setup</span>
+                <h2 id="gameSettingsTitle">Game Settings</h2>
+              </div>
+              <span class="settings-note">Saved between hands</span>
+            </div>
+            <div class="settings-grid">
+              <label class="setting-control">
+                <span>Game Type</span>
+                <select id="builderGameType">
+                  <option value="6max">6-Max Cash</option>
+                </select>
+              </label>
+              <label class="setting-control">
+                <span>Starting Stack</span>
+                <select id="builderStartingStack">
+                  <option value="50">50 bb</option>
+                  <option value="100" selected>100 bb</option>
+                  <option value="200">200 bb</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <div class="builder-layout hand-stage">
+            <aside class="panel hand-progress-region" aria-label="Hand progress">
+              <span class="section-kicker">Hand Progress</span>
+              <div class="hand-progress-list">
+                <div class="hand-progress-step is-current"><span>1</span><div><strong>Pre-flop</strong><small>Current street</small></div></div>
+                <div class="hand-progress-step"><span>2</span><div><strong>Flop</strong><small>Pending</small></div></div>
+                <div class="hand-progress-step"><span>3</span><div><strong>Turn</strong><small>Pending</small></div></div>
+                <div class="hand-progress-step"><span>4</span><div><strong>River</strong><small>Pending</small></div></div>
+                <div class="hand-progress-step"><span>5</span><div><strong>Results</strong><small>Analyze</small></div></div>
+              </div>
+            </aside>
+            <section class="table-workspace hand-table-region" aria-label="Poker table and action history">
+              <div class="poker-table-frame">
+                <div id="preflopTable" class="poker-table" aria-label="Six-max poker table"></div>
+                <div class="table-toolbar" aria-hidden="true">
+                  <button class="icon-btn table-toolbar-btn" type="button" disabled title="Table settings (coming soon)">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                  </button>
+                  <button class="secondary-btn table-toolbar-btn table-replay-btn" type="button" disabled title="Replay hand (coming soon)">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="6,4 20,12 6,20"></polygon></svg>
+                    Replay
+                  </button>
+                </div>
+              </div>
+              <section class="panel timeline-panel" aria-labelledby="timelineTitle">
+                <div class="compact-panel-heading">
+                  <div>
+                    <span class="section-kicker">Decision path</span>
+                    <h2 id="timelineTitle">Pre-flop Action</h2>
+                  </div>
+                  <strong id="preflopPotDisplay" class="pot-display">Pot: 19 bb</strong>
+                </div>
+                <div id="preflopTimeline" class="preflop-timeline"></div>
+              </section>
+            </section>
+
+            <aside class="builder-rail hand-decision-region">
+              <section id="nextActionPanel" class="panel next-action-panel" aria-live="polite"></section>
+              <details class="panel opponent-panel">
+                <summary>
+                  <span class="panel-icon-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                  </span>
+                  <span class="panel-summary-text">
+                    <strong>Opponent Assumptions</strong>
+                    <em id="opponentAssumptionsValue">Loose Online</em>
+                    <small>Adjust opponent tendencies for more accurate analysis.</small>
+                  </span>
+                  <svg class="panel-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </summary>
+                <div class="opponent-baseline">
+                  <label for="builderOpponentProfile">Baseline</label>
+                  <select id="builderOpponentProfile">
+                    <option value="standard">Standard</option>
+                    <option value="loose" selected>Loose Online</option>
+                    <option value="tight">Tight</option>
+                  </select>
+                </div>
+                <div id="opponentAssumptions" class="opponent-assumptions"></div>
+              </details>
+              <section class="panel intelligence-panel" aria-labelledby="intelligenceTitle">
+                <div class="intelligence-panel-header">
+                  <span class="panel-icon-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"></path><path d="M19 15l.8 1.9L21.7 17.7l-1.9.8L19 20.4l-.8-1.9L16.3 17.7l1.9-.8L19 15z"></path></svg>
+                  </span>
+                  <div class="panel-summary-text">
+                    <span class="section-kicker">AI Analysis Layer</span>
+                    <h2 id="intelligenceTitle">Range / AI Intelligence</h2>
+                  </div>
+                  <label class="toggle-switch" aria-label="Toggle AI analysis layer">
+                    <input type="checkbox" checked disabled />
+                    <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+                  </label>
+                </div>
+                <p>Prior range → context adjusted → posterior range</p>
+                <div id="rangeIntelligenceSummary" class="intelligence-summary">Loose Online baseline selected.</div>
+              </section>
+              <div class="builder-cta-stack">
+                <button id="analyzePreflopBtn" class="primary-btn analyze-builder-btn" type="button">Analyze Pre-flop</button>
+                <button id="continueFlopBtn" class="secondary-btn" type="button">Continue to Flop</button>
+              </div>
+            </aside>
+          </div>
+
+          <div class="legacy-preflop-fields" hidden aria-hidden="true">
+            <select id="gameType"><option value="6max">6-max no-limit hold'em</option></select>
+            <select id="rangeMode"><option value="loose">Loose low-stakes online</option><option value="tight">Tight PDF baseline</option></select>
+            <select id="heroPosition"><option>UTG</option><option>HJ</option><option>MP</option><option>CO</option><option>BTN</option><option selected>SB</option><option>BB</option></select>
+            <input id="heroHand" value="Ah Kh" />
+            <select id="villainPosition"><option selected>UTG</option><option>HJ</option><option>MP</option><option>CO</option><option>BTN</option><option>SB</option><option>BB</option></select>
+            <input id="preflopPotSize" type="number" value="19" readonly />
+            <label id="preflopCallField"><input id="preflopCallAmount" type="number" value="0" readonly /></label>
+            <div id="preflopActions" class="action-sequence"></div>
+          </div>
+
+          <dialog id="heroCardDialog" class="card-dialog" aria-labelledby="cardDialogTitle">
+            <form method="dialog" class="card-dialog-shell">
+              <div class="card-dialog-header">
+                <div>
+                  <span class="section-kicker">Hero hand</span>
+                  <h2 id="cardDialogTitle">Select Hero Cards</h2>
+                </div>
+                <button id="closeCardDialogBtn" class="icon-btn" value="cancel" aria-label="Close card picker">×</button>
+              </div>
+              <div class="selected-card-summary">
+                <span>Selected Cards</span>
+                <div id="selectedCardsPreview"></div>
+                <button id="clearSelectedCardsBtn" class="secondary-btn" type="button">Clear</button>
+              </div>
+              <div id="cardPickerGrid" class="card-picker-grid" aria-label="Playing cards"></div>
+              <p id="cardPickerHelp">Select exactly two cards to continue.</p>
+              <div class="card-dialog-actions">
+                <button class="secondary-btn" value="cancel">Cancel</button>
+                <button id="confirmHeroCardsBtn" class="primary-btn" value="default" disabled>Done</button>
+              </div>
+            </form>
+          </dialog>
+        </section>
+
+        <section id="postflopBuilder" class="manual-mode postflop-builder is-hidden" data-hand-workspace="manual" aria-label="Visual post-flop hand builder">
+          <div class="postflop-layout hand-stage">
+            <nav id="streetNavigator" class="street-navigator" aria-label="Hand streets"></nav>
+            <div class="postflop-main">
+              <div class="postflop-table-workspace">
+                <section id="postflopTable" class="postflop-table" aria-label="Post-flop poker table">
+                  <div class="postflop-pot" aria-live="polite">Pot <strong id="postflopPot">0 bb</strong></div>
+                  <div id="boardCardSlots" class="board-card-slots" aria-label="Community cards"></div>
+                  <div id="postflopSeats" class="postflop-seats"></div>
+                </section>
+                <section class="panel postflop-timeline-panel" aria-label="Decision path">
+                  <div class="section-title"><span>Decision path</span><strong>Hand Timeline</strong></div>
+                  <div id="postflopTimeline" class="postflop-timeline"></div>
+                </section>
+              </div>
+              <aside class="postflop-rail">
+                <section id="postflopNextAction" class="panel postflop-next-action" aria-live="polite"></section>
+                <section class="panel postflop-assumptions">
+                  <div class="section-title"><span>Opponent assumptions</span><strong>Range context</strong></div>
+                  <p>Pre-flop assumptions carry forward and update as the hand develops.</p>
+                </section>
+                <button id="postflopAdvanceBtn" class="secondary-btn" type="button" disabled>Continue</button>
+                <button id="postflopAnalyzeBtn" class="primary-btn" type="button">Analyze Street</button>
+              </aside>
+            </div>
+          </div>
+          <section id="postflopAnalysis" class="panel postflop-analysis" aria-label="Post-flop analysis">
+            <div class="section-title"><span>Analysis</span><strong>Ranges, Equity &amp; AI</strong></div>
+            <p>Complete the board and action path to generate street-specific analysis.</p>
+          </section>
+
+          <dialog id="postflopCardDialog" class="card-dialog" aria-labelledby="postflopCardDialogTitle">
+            <form method="dialog" class="card-dialog-shell">
+              <div class="card-dialog-header">
+                <div><span class="section-kicker">Community cards</span><h2 id="postflopCardDialogTitle">Select Board Cards</h2></div>
+                <button id="closePostflopCardDialogBtn" class="icon-btn" value="cancel" aria-label="Close board card picker">×</button>
+              </div>
+              <div class="selected-card-summary"><span>Selected Cards</span><div id="postflopSelectedCards" class="postflop-selected-cards"></div></div>
+              <div id="postflopCardPickerGrid" class="card-picker-grid postflop-card-picker-grid" aria-label="Available playing cards"></div>
+              <p id="postflopCardPickerHelp">Select the cards for this street.</p>
+              <div class="card-dialog-actions">
+                <button id="clearBoardCardsBtn" class="secondary-btn" type="button">Clear</button>
+                <button class="secondary-btn" value="cancel">Cancel</button>
+                <button id="confirmBoardCardsBtn" class="primary-btn" value="default" disabled>Done</button>
+              </div>
+            </form>
+          </dialog>
+        </section>
+
+        <!-- Legacy street inputs: the Manual and Import builders write the board and actions here and analyze()
+             reads them back. They are data, not UI, so they stay in the DOM but are never displayed. -->
+        <div class="legacy-street-inputs" hidden aria-hidden="true">
+          <section id="flopSection" class="panel input-panel manual-mode is-hidden" aria-label="Flop situation">
+            <div class="input-section-header">
+              <span>Flop</span>
+              <strong>Board texture, action, and range narrowing</strong>
+            </div>
+            <div class="field-grid">
+              <label>
+                Flop cards
+                <input id="boardCards" placeholder="Optional, e.g. Qh Js 7c" spellcheck="false" />
+              </label>
+              <label>
+                Flop calculated pot
+                <input id="flopPotSize" type="number" min="0" step="0.5" value="0" readonly />
+              </label>
+              <label id="flopCallField" class="is-hidden">
+                Flop amount to call
+                <input id="flopCallAmount" type="number" min="0" step="0.5" value="0" readonly />
+              </label>
+            </div>
+            <div class="sequence-block">
+              <div class="sequence-header">
+                <span>Flop Actions</span>
+                <button id="addFlopActionBtn" class="secondary-btn" type="button">Add Action</button>
+              </div>
+              <div id="flopActions" class="action-sequence"></div>
+            </div>
+            <div id="flopOrderText" class="position-readout">Postflop order will appear after analysis.</div>
+            <div class="stage-actions">
+              <button id="analyzeFlopBtn" class="primary-btn" type="button">Analyze Flop</button>
+              <button id="continueTurnBtn" class="secondary-btn" type="button">Continue to Turn</button>
+            </div>
+          </section>
+
+          <section id="turnSection" class="panel input-panel manual-mode is-hidden" aria-label="Turn situation">
+            <div class="input-section-header">
+              <span>Turn</span>
+              <strong>Next sequential street</strong>
+            </div>
+            <div class="field-grid">
+              <label>
+                Turn card
+                <input id="turnCard" placeholder="Optional next step, e.g. 2d" spellcheck="false" />
+              </label>
+              <label>
+                Turn calculated pot
+                <input id="turnPotSize" type="number" min="0" step="0.5" value="0" readonly />
+              </label>
+              <label id="turnCallField" class="is-hidden">
+                Turn amount to call
+                <input id="turnCallAmount" type="number" min="0" step="0.5" value="0" readonly />
+              </label>
+            </div>
+            <div class="sequence-block">
+              <div class="sequence-header">
+                <span>Turn Actions</span>
+                <button id="addTurnActionBtn" class="secondary-btn" type="button">Add Action</button>
+              </div>
+              <div id="turnActions" class="action-sequence"></div>
+            </div>
+            <div id="turnOrderText" class="position-readout">Turn action sequence uses the same postflop order.</div>
+            <div class="stage-actions">
+              <button id="analyzeTurnBtn" class="primary-btn" type="button">Analyze Turn</button>
+              <button id="continueRiverBtn" class="secondary-btn" type="button">Continue to River</button>
+            </div>
+          </section>
+
+          <section id="riverSection" class="panel input-panel manual-mode is-hidden" aria-label="River situation">
+            <div class="input-section-header">
+              <span>River</span>
+              <strong>Final sequential street</strong>
+            </div>
+            <div class="field-grid">
+              <label>
+                River card
+                <input id="riverCard" placeholder="Optional next step, e.g. 9s" spellcheck="false" />
+              </label>
+              <label>
+                River calculated pot
+                <input id="riverPotSize" type="number" min="0" step="0.5" value="0" readonly />
+              </label>
+              <label id="riverCallField" class="is-hidden">
+                River amount to call
+                <input id="riverCallAmount" type="number" min="0" step="0.5" value="0" readonly />
+              </label>
+            </div>
+            <div class="sequence-block">
+              <div class="sequence-header">
+                <span>River Actions</span>
+                <button id="addRiverActionBtn" class="secondary-btn" type="button">Add Action</button>
+              </div>
+              <div id="riverActions" class="action-sequence"></div>
+            </div>
+            <div id="riverOrderText" class="position-readout">River action sequence uses the same postflop order.</div>
+            <div class="stage-actions">
+              <button id="analyzeRiverBtn" class="primary-btn" type="button">Analyze River</button>
+            </div>
+          </section>
+        </div>
+
+        <section id="analysisWorkspace" class="analysis-workspace shared-analysis-mode" aria-label="PokeTerior analysis workspace">
+          <div class="analysis-summary panel">
+            <div class="summary-cards">
+              <span class="summary-label">Hero</span>
+              <div class="card-row" aria-hidden="true">
+                <div id="heroCardA" class="playing-card empty"><span class="card-rank">?</span><span class="card-suit">?</span></div>
+                <div id="heroCardB" class="playing-card empty"><span class="card-rank">?</span><span class="card-suit">?</span></div>
+              </div>
+            </div>
+            <div class="summary-cards">
+              <span class="summary-label">Board</span>
+              <div id="boardCardRow" class="board-card-row" aria-hidden="true"><div class="playing-card empty"><span class="card-rank">?</span><span class="card-suit">?</span></div><div class="playing-card empty"><span class="card-rank">?</span><span class="card-suit">?</span></div><div class="playing-card empty"><span class="card-rank">?</span><span class="card-suit">?</span></div><div class="playing-card empty"><span class="card-rank">?</span><span class="card-suit">?</span></div><div class="playing-card empty"><span class="card-rank">?</span><span class="card-suit">?</span></div></div>
+            </div>
+            <div class="summary-verdict">
+              <span id="summaryContext" class="summary-label">Enter the action and click analyze.</span>
+              <div id="summaryVerdict" class="summary-verdict-row"><span class="verdict-badge" data-tone="neutral" data-empty="true">Waiting for a spot</span></div>
+            </div>
+          </div>
+
+          <div class="analysis-placeholder">
+            <strong>Your analysis will appear here</strong>
+            <span>Build the hand, then choose Analyze to see villain's range, your equity, and the AI coaching notes.</span>
+          </div>
+
+          <nav class="analysis-tabs" role="tablist" aria-label="Analysis views">
+            <button id="analysisTabRanges" class="analysis-tab" type="button" role="tab" data-analysis-tab="ranges" aria-controls="analysisPanelRanges">Ranges</button>
+            <button id="analysisTabEquity" class="analysis-tab" type="button" role="tab" data-analysis-tab="equity" aria-controls="analysisPanelEquity">Equity</button>
+            <button id="analysisTabAi" class="analysis-tab" type="button" role="tab" data-analysis-tab="ai" aria-controls="analysisPanelAi">AI Analysis</button>
+            <button id="analysisTabBreakdown" class="analysis-tab" type="button" role="tab" data-analysis-tab="breakdown" aria-controls="analysisPanelBreakdown">Breakdown</button>
+          </nav>
+
+          <section id="analysisPanelRanges" class="analysis-panel tab-grid" role="tabpanel" data-analysis-panel="ranges" aria-labelledby="analysisTabRanges">
+            <article class="ws-card span-2">
+              <div class="ws-card-head">
+                <span id="rangeHeadLabel">Villain estimated range</span>
+                <strong id="rangeComboCount" class="ws-accent">-</strong>
+              </div>
+              <div id="rangeText" class="range-text">Run an analysis to ask the LLM for villain range.</div>
+              <div id="llmRangeMeta" class="range-meta is-hidden"></div>
+            </article>
+            <article class="ws-card stat-card">
+              <div class="ws-card-head"><span>Hand types</span></div>
+              <div id="rangeBreakdown" class="breakdown"></div>
+            </article>
+            <article class="ws-card span-2">
+              <div class="ws-card-head"><span>Range evolution</span></div>
+              <div id="rangeSteps" class="evo-steps"></div>
+              <div id="rangeNarrowing" class="evo-narrowing"></div>
+              <details class="evo-details">
+                <summary>Street-by-street detail</summary>
+                <div id="rangeTimeline" class="range-timeline"></div>
+              </details>
+            </article>
+            <article class="ws-card">
+              <div class="ws-card-head"><span>Action buckets</span></div>
+              <div id="actionBuckets" class="breakdown"></div>
+            </article>
+            <details class="ws-card span-3 exact-details">
+              <summary>Exact possibilities</summary>
+              <div id="rangeDetails" class="range-details"></div>
+            </details>
+          </section>
+
+          <section id="analysisPanelEquity" class="analysis-panel tab-grid one-up" role="tabpanel" data-analysis-panel="equity" aria-labelledby="analysisTabEquity">
+            <div class="metric-grid">
+              <div><span>Hero equity</span><strong id="equityMetric">-</strong></div>
+              <div><span>Pot odds</span><strong id="potOddsMetric">-</strong></div>
+              <div><span id="evLabel">Call EV</span><strong id="evMetric">-</strong></div>
+              <div><span>Confluence</span><strong id="confluenceMetric">-</strong></div>
+            </div>
+            <article class="ws-card">
+              <div class="ws-card-head"><span>Hand vs range</span></div>
+              <div id="equityBuckets" class="equity-buckets"><p class="ws-empty">Ahead, behind, and near-flip combos appear after analysis.</p></div>
+            </article>
+            <article class="ws-card">
+              <div class="ws-card-head"><span>Board texture</span></div>
+              <div id="boardTextureSummary" class="board-texture-summary"><p class="ws-empty">Structural observations appear after analysis.</p></div>
+            </article>
+          </section>
+
+          <section id="analysisPanelAi" class="analysis-panel" role="tabpanel" data-analysis-panel="ai" aria-labelledby="analysisTabAi">
+            <div id="recommendation" class="recommendation ws-card">
+              <p class="eyebrow">Recommended Action</p>
+              <h2>Waiting for a spot</h2>
+              <p>Enter the action and click analyze.</p>
+            </div>
+            <div class="tab-grid three-up">
+              <article class="ws-card ai-card">
+                <div class="ws-card-head"><span>Coach reasoning</span><span id="aiModel" class="ws-model"></span></div>
+                <div id="aiReasoning" class="ai-reasoning"><p class="ws-empty">Run an analysis to generate the coach's reasoning.</p></div>
+              </article>
+              <article class="ws-card ai-card harrington-card" aria-label="Harrington style analysis">
+                <div class="ws-card-head"><span>Harrington style</span></div>
+                <div id="harringtonAnalysis" class="harrington-analysis">
+                  <p>Run an analysis to generate a Harrington-style coaching note.</p>
+                </div>
+              </article>
+              <article class="ws-card ai-card pokerskill-card" aria-label="Skill-grounded analysis">
+                <div class="ws-card-head"><span>Skill-grounded analysis</span></div>
+                <div id="pokerSkillAnalysis" class="pokerskill-analysis">
+                  <p>Run an analysis to generate a skill-grounded LLM recommendation.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section id="analysisPanelBreakdown" class="analysis-panel tab-grid one-up" role="tabpanel" data-analysis-panel="breakdown" aria-labelledby="analysisTabBreakdown">
+            <article class="ws-card solver-card">
+              <div id="solverResult" class="solver-result"><span>TexasSolver</span><strong>Not run yet</strong><small>The solver checks flop, turn, and river spots.</small></div>
+            </article>
+            <article class="ws-card">
+              <div class="ws-card-head"><span>Calculation trail</span></div>
+              <div id="calculationLog" class="calculation-log">The calculation trail will appear here.</div>
+            </article>
+            <details class="ws-card developer-details">
+              <summary>Developer Details</summary>
+              <div id="developerDiagnostics" class="developer-diagnostics">Model, solver, request, and error diagnostics appear here when available.</div>
+            </details>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="./rangeNotation.js"></script>
+    <script src="./preflopRangeLock.js"></script>
+    <script src="./streetRangeLock.js"></script>
+    <script src="./actionPolicy.js"></script>
+    <script src="./actionRowPresentation.js"></script>
+    <script src="./importAnalysisCacheModel.js"></script>
+    <script src="./importAnalysisPrefetchModel.js"></script>
+    <script src="./analysisRequestModel.js"></script>
+    <script src="./importProgressModel.js"></script>
+    <script src="./screenshotUploadModel.js"></script>
+    <script src="./handStagePresentation.js"></script>
+    <script src="./handSessionModel.js"></script>
+    <script src="./importDecisionModel.js"></script>
+    <script src="./rangeDecisionContext.js"></script>
+    <script src="./llmRangeGuard.js"></script>
+    <script src="./preflopSpotModel.js"></script>
+    <script src="./apiClient.js"></script>
+    <script src="./postflopCompatibility.js"></script>
+    <script src="./preflopBuilderModel.js"></script>
+    <script src="./preflopBuilderView.js"></script>
+    <script src="./postflopBuilderModel.js"></script>
+    <script src="./importBuilderAdapter.js"></script>
+    <script src="./rangeMatrixView.js"></script>
+    <script src="./rangeBucketMatrixView.js"></script>
+    <script src="./postflopAnalysisView.js"></script>
+    <script src="./postflopBuilderView.js"></script>
+    <script src="./handWorkspaceView.js"></script>
+    <script src="./importCardValidity.js"></script>
+    <script src="./importHeroCardModel.js"></script>
+    <script src="./providerAttribution.js"></script>
+    <script src="./analysisPresentation.js"></script>
+    <script src="./analysisTabsView.js"></script>
+    <script src="./import-engine/types.js"></script>
+    <script src="./import-engine/legacyAdapter.js"></script>
+    <script src="./import-engine/adapters/registry.js"></script>
+    <script src="./import-engine/vision/regions.js"></script>
+    <script src="./import-engine/adapters/natural8.js"></script>
+    <script src="./import-engine/parsing/actions.js"></script>
+    <script src="./import-engine/cards/templateRecognizer.js"></script>
+    <script src="./vendor/tesseract/tesseract.min.js"></script>
+    <script src="./import-engine/ocr/workerPool.js"></script>
+    <script src="./import-engine/ocr/recognizer.js"></script>
+    <script src="./import-engine/validation/validator.js"></script>
+    <script src="./import-engine/fallback/client.js"></script>
+    <script src="./import-engine/dispatch.js"></script>
+    <script src="./import-engine/progressView.js"></script>
+    <script src="./import-engine/engine.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "id": "tyloo-poker-range-analyzer",
+  "title": "Poker Range Analyzer",
+  "url": "https://github.com/Tyloo/poker-range-analyzer",
+  "license": "MIT",
+  "downloaded_at": "2026-05-30",
+  "local_path": "resources/ranges/6max/tyloo-poker-range-analyzer",
+  "coverage_notes": [
+    "6-max No-Limit Hold'em preflop ranges by position.",
+    "UTG, MP, CO, BTN, and SB files are RFI/opening ranges.",
+    "BB file is documented upstream as a defense range versus BTN open.",
+    "Ranges include raise/call/fold frequencies by hand class.",
+    "This is not yet a complete tree for all facing-open, 3-bet, 4-bet, and cold-call situations."
+  ],
+  "imported_files": [
+    "lib/ranges/utg.ts",
+    "lib/ranges/mp.ts",
+    "lib/ranges/co.ts",
+    "lib/ranges/btn.ts",
+    "lib/ranges/sb.ts",
+    "lib/ranges/bb.ts",
+    "lib/ranges/index.ts",
+    "LICENSE",
+    "README.upstream.md"
+  ]
+}

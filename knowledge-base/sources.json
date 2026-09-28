@@ -1,0 +1,38 @@
+{
+  "sources": [
+    {
+      "id": "harrington-cash-notes",
+      "title": "Harrington on Cash Games - personal notes",
+      "type": "book_notes",
+      "path": "knowledge-base/notes/harrington-cash-concepts.md",
+      "status": "planned",
+      "tags": ["cash-game", "nlhe", "fundamentals"]
+    },
+    {
+      "id": "harrington-tournament-notes",
+      "title": "Harrington on Hold'em / Tournament concepts - personal notes",
+      "type": "book_notes",
+      "path": "knowledge-base/notes/harrington-tournament-concepts.md",
+      "status": "planned",
+      "tags": ["tournament", "nlhe", "mtt"]
+    },
+    {
+      "id": "sample-analyses",
+      "title": "Poker Coach sample analyses",
+      "type": "examples",
+      "path": "knowledge-base/examples/",
+      "status": "active",
+      "tags": ["coaching-style", "examples"]
+    },
+    {
+      "id": "tyloo-poker-range-analyzer",
+      "title": "Poker Range Analyzer 6-max preflop ranges",
+      "type": "range_source",
+      "path": "resources/ranges/6max/tyloo-poker-range-analyzer/",
+      "url": "https://github.com/Tyloo/poker-range-analyzer",
+      "license": "MIT",
+      "status": "downloaded",
+      "tags": ["6max", "nlhe", "preflop", "ranges", "rfi"]
+    }
+  ]
+}

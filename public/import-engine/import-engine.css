@@ -1,0 +1,29 @@
+/* Import Engine V2 progress and field-review styles. Uses the PokeTerior tokens; status is always written out,
+   colour and the glyph only reinforce it. */
+/* .import-panel is a multi-column grid; span it like the summary and workspace siblings do. */
+.import-stages { grid-column: 1 / -1; margin-top: 10px; }
+.import-stage-panel { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.import-stage-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin: 0; padding: 0; list-style: none; }
+.import-stage { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "icon label status" ". message message"; align-items: baseline; gap: 0 8px; min-height: 28px; color: var(--text-secondary); font-size: 13px; }
+.import-stage .stage-icon { grid-area: icon; width: 20px; text-align: center; font-weight: 700; color: var(--muted); }
+.import-stage .stage-label { grid-area: label; color: var(--text); overflow-wrap: anywhere; }
+.import-stage .stage-status { grid-area: status; font-size: 12px; letter-spacing: 0.02em; }
+.import-stage .stage-message { grid-area: message; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.import-stage.is-running .stage-icon { color: var(--accent); }
+.import-stage.is-complete .stage-icon, .import-stage.is-complete .stage-status { color: var(--accent); }
+.import-stage.is-warning .stage-icon, .import-stage.is-warning .stage-status { color: var(--text); }
+.import-stage.is-warning { border-left: 2px solid var(--accent); padding-left: 6px; }
+.import-stage.is-error .stage-icon, .import-stage.is-error .stage-status { color: var(--danger); }
+.import-stage.is-error { border-left: 2px solid var(--danger); padding-left: 6px; }
+.import-field-warnings { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.import-field-warning { min-height: 44px; padding: 0 12px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+span.import-field-warning { display: inline-flex; align-items: center; cursor: default; border-style: dashed; }
+.import-field-warning:hover, .import-field-warning:focus-visible { background: rgba(40, 230, 154, 0.2); outline: 2px solid var(--accent); outline-offset: 2px; }
+.import-stage-live { color: var(--text-secondary); font-size: 12px; }
+.import-timeline-action[disabled] { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .import-stage-list { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .import-field-warning { transition: none; }
+}

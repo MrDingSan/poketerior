@@ -1,0 +1,16 @@
+knowledge-base/raw/
+knowledge-base/index/
+.env
+.env.local
+node_modules/
+logs/
+tmp/
+.worktrees/
+*.DS_Store
+public/vendor/tesseract/
+
+# Copyrighted book extracts stay local; the app runs without them
+data/harrington/
+# Local agent tooling
+.superpowers/
+.claude/settings.local.json

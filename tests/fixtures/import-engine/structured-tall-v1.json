@@ -1,0 +1,38 @@
+{
+  "id": "structured-tall-v1",
+  "description": "Labeled geometry and expected recognition output for the structured tall history layout (table on top, five history columns below).",
+  "image": "tests/fixtures/coinpoker-river-showdown.png",
+  "width": 1280,
+  "height": 2022,
+  "siteEvidence": "layout-only",
+  "siteEvidenceNote": "The referenced screenshot is CoinPoker-branded. It only proves the tall layout geometry; it is NOT Natural8 ground truth and must not be used to validate brand detection or card templates.",
+  "namesAnonymized": true,
+  "profile": "classic-tall-v1",
+  "anchors": { "tallAspect": true, "historyBoundary": true, "fiveColumns": true, "streetHeadings": true, "tableCards": true },
+  "headings": ["Blinds (Ante)", "Pre-Flop", "Flop", "Turn", "River"],
+  "expected": {
+    "hero": { "name": "Hero", "position": "BTN", "cards": ["Ah", "4h"] },
+    "board": { "flop": ["4d", "6h", "7h"], "turn": "Ad", "river": "5h" },
+    "pots": { "preflop": 1.5, "flop": 6.5, "turn": 10.8, "river": 21.6 },
+    "blindsColumn": [["SB 0.5 BB", "Seat-SB", "SB"], ["BB 1 BB", "Seat-BB", "BB"]],
+    "rows": {
+      "preflop": [
+        ["Fold", "Seat-UTG", "UTG"],
+        ["10s", null, null],
+        ["Fold", "Seat-MP", "MP"],
+        ["Fold", "Seat-CO", "CO"],
+        ["Raise 3 BB", "Hero", "BTN"],
+        ["Fold", "Seat-SB", "SB"],
+        ["Call 2 BB", "Seat-BB", "BB"]
+      ],
+      "flop": [["Check", "Seat-BB", "BB"], ["Bet 2.2 BB", "Hero", "BTN"], ["Call 2.2 BB", "Seat-BB", "BB"]],
+      "turn": [["Check", "Seat-BB", "BB"], ["Bet 5.4 BB", "Hero", "BTN"], ["Call 5.4 BB", "Seat-BB", "BB"]],
+      "river": [["Check", "Seat-BB", "BB"], ["Bet 21.6 BB", "Hero", "BTN"], ["Fold", "Seat-BB", "BB"], ["Wins 21.6 BB", "Hero", null]]
+    },
+    "notes": [
+      "The 10s row is a decision-timer bubble, not an action.",
+      "Displayed turn/river pots are 0.1 bb below the replayed pots (rake); both are inside the max(0.2 bb, 2%) tolerance.",
+      "The Wins row is bookkeeping, not an action."
+    ]
+  }
+}

@@ -1,0 +1,375 @@
+/* Screenshot import screen.
+   Layout is driven by #importSection[data-import-state]: empty | reading | review | failed.
+
+   Color legend (used the same way in every part of this screen, and never as the only signal):
+     blue   interactive, selected, or in progress   (drag-over, running step, selected decision, focus)
+     green  done, ready, and Hero                   (finished step, primary button, Hero cards and actions)
+     amber  needs your check                        (uncertain fields, replay warnings, confidence notes)
+     red    failed or invalid                       (import failed, duplicate or impossible cards)
+     slate  everything else                         (surfaces, villains, pending steps)
+   Timeline boxes are colored by player, not street: Hero is green and each villain keeps one hue all hand. */
+
+#importSection {
+  --imp-s1: var(--pt-s1);
+  --imp-s2: var(--pt-s2);
+  --imp-s3: var(--pt-s3);
+  --imp-line: var(--pt-bd);
+  --imp-line-strong: var(--pt-bd-strong);
+  --imp-tx: var(--pt-tx);
+  --imp-tx-2: var(--pt-t2);
+  --imp-tx-3: var(--pt-mu);
+
+  --imp-info: var(--pt-info);
+  --imp-info-soft: var(--pt-info-soft);
+  --imp-info-ink: var(--pt-info-ink);
+  --imp-ok: var(--pt-ac);
+  --imp-ok-soft: var(--pt-ac-soft);
+  --imp-ok-ink: var(--pt-ac-ink);
+  --imp-warn: var(--pt-bet);
+  --imp-warn-soft: var(--pt-bet-soft);
+  --imp-warn-ink: var(--pt-bet-ink);
+  --imp-bad: var(--pt-bad);
+  --imp-bad-soft: var(--pt-bad-soft);
+  --imp-bad-ink: var(--pt-bad-ink);
+
+  /* One color per villain for the whole hand (Hero is green). None of these is a status color. */
+  --imp-villain-0: #a78bfa;
+  --imp-villain-1: #f472b6;
+  --imp-villain-2: #22d3ee;
+  --imp-villain-3: #fb923c;
+  --imp-villain-4: #94a3b8;
+
+  color: var(--imp-tx);
+}
+#importSection[hidden],
+#importSection.is-hidden { display: none; }
+
+#importSection.import-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#importSection > * { min-width: 0; }
+#importSection .import-preview,
+#importSection .import-status,
+#importSection .import-stages,
+#importSection .import-summary,
+#importSection .import-decisions,
+#importSection .import-builder-workspace { grid-column: 1 / -1; margin: 0; }
+#importSection .import-stages.is-hidden,
+/* The review card stays in the DOM (its inputs feed corrections) but is only shown when something needs fixing. */
+#importSection .import-summary.is-collapsed { display: none !important; }
+#importSection .import-summary.is-hidden,
+#importSection .import-preview.is-hidden,
+#importSection .import-decisions.is-hidden { display: none; }
+
+/* ---------- Dropzone ---------- */
+#importSection > .import-dropzone {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-content: center;
+  gap: 16px;
+  min-height: 340px;
+  padding: 36px;
+  border: 1.5px dashed var(--imp-line-strong);
+  border-radius: 14px;
+  background: var(--imp-s1);
+  color: var(--imp-tx-2);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+#importSection > .import-dropzone::after { content: none; }
+#importSection > .import-dropzone:hover,
+#importSection > .import-dropzone:focus-visible,
+#importSection > .import-dropzone.is-dragging { border-color: var(--imp-info); background: var(--imp-info-soft); outline: none; }
+#importSection > .import-dropzone:focus-visible { box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.35); }
+#importSection > .import-dropzone.is-dragging { border-style: solid; }
+.import-dropzone-icon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 16px;
+  background: var(--imp-info-soft);
+  color: var(--imp-info);
+  font-size: 26px;
+}
+.import-dropzone-copy { display: grid; gap: 6px; }
+#importSection > .import-dropzone strong { margin: 0; color: var(--imp-tx); font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+#importSection > .import-dropzone p { max-width: 44ch; margin: 0; color: var(--imp-tx-2); font-size: 14px; line-height: 1.55; }
+.import-dropzone-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px; }
+.import-dropzone-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 1px solid var(--imp-ok);
+  border-radius: 10px;
+  background: var(--imp-ok);
+  color: var(--imp-ok-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.import-dropzone:hover .import-dropzone-button { border-color: #6ee7b7; background: #6ee7b7; }
+.import-dropzone-hint { color: var(--imp-tx-3); font-size: 13px; }
+
+/* ---------- How it works: step colors preview the states that follow ---------- */
+.import-help { display: grid; align-content: start; gap: 24px; padding: 24px; border: 1px solid var(--imp-line); border-radius: 14px; background: var(--imp-s1); }
+.import-help-label { display: block; margin-bottom: 14px; color: var(--imp-tx-2); font-size: 12px; font-weight: 500; }
+.import-help-steps { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; }
+.import-help-steps li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; }
+.import-help-steps li > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; font-size: 14px; font-weight: 600; }
+.import-help-steps li:nth-child(1) > span { background: var(--imp-info-soft); box-shadow: inset 0 0 0 1px var(--imp-info); color: var(--imp-info); }
+.import-help-steps li:nth-child(2) > span { background: var(--imp-warn-soft); box-shadow: inset 0 0 0 1px var(--imp-warn); color: var(--imp-warn); }
+.import-help-steps li:nth-child(3) > span { background: var(--imp-ok-soft); box-shadow: inset 0 0 0 1px var(--imp-ok); color: var(--imp-ok); }
+.import-help-steps strong { display: block; color: var(--imp-tx); font-size: 15px; font-weight: 600; }
+.import-help-steps small { color: var(--imp-tx-2); font-size: 13px; line-height: 1.5; }
+.import-help-sites { display: flex; flex-wrap: wrap; gap: 8px; }
+.import-help-sites span { padding: 5px 13px; border: 1px solid var(--imp-line-strong); border-radius: 999px; background: var(--imp-s2); color: var(--imp-tx-2); font-size: 12px; }
+
+/* ---------- Empty: just the dropzone and the help card ---------- */
+#importSection[data-import-state="empty"] .import-preview,
+#importSection[data-import-state="empty"] .import-status,
+#importSection[data-import-state="empty"] .import-stages,
+#importSection[data-import-state="empty"] .import-summary,
+#importSection[data-import-state="empty"] .import-decisions,
+#importSection[data-import-state="empty"] .import-builder-workspace { display: none; }
+
+/* ---------- Reading, review, failed: the dropzone shrinks to a slim "replace" bar ---------- */
+#importSection:not([data-import-state="empty"]) > .import-dropzone {
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  justify-items: start;
+  align-items: center;
+  gap: 14px;
+  min-height: 0;
+  padding: 12px 16px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--imp-line);
+  text-align: left;
+}
+#importSection:not([data-import-state="empty"]) .import-dropzone-icon { width: 38px; height: 38px; border-radius: 10px; font-size: 17px; }
+#importSection:not([data-import-state="empty"]) > .import-dropzone strong { font-size: 14px; }
+#importSection:not([data-import-state="empty"]) > .import-dropzone p,
+#importSection:not([data-import-state="empty"]) .import-dropzone-hint,
+#importSection:not([data-import-state="empty"]) .import-help { display: none; }
+#importSection:not([data-import-state="empty"]) .import-dropzone-button { min-height: 36px; padding: 0 16px; border-color: var(--imp-line-strong); background: var(--imp-s2); color: var(--imp-tx); font-size: 13px; font-weight: 500; }
+#importSection:not([data-import-state="empty"]) .import-dropzone:hover .import-dropzone-button { border-color: var(--imp-info); background: var(--imp-info-soft); }
+/* After a failure the replace button is the next step, so it becomes the primary action again. */
+#importSection[data-import-state="failed"] .import-dropzone-button { border-color: var(--imp-ok); background: var(--imp-ok); color: var(--imp-ok-ink); font-weight: 600; }
+#importSection[data-import-state="failed"] .import-stages,
+#importSection[data-import-state="failed"] .import-summary { display: none; }
+#importSection[data-import-state="review"] .import-progress-head,
+#importSection[data-import-state="review"] .import-progress-bar { display: none; }
+
+/* ---------- Status line and screenshot chip ---------- */
+#importSection .import-status {
+  padding: 12px 16px 12px 18px;
+  border: 1px solid var(--imp-line);
+  border-left: 3px solid var(--imp-line-strong);
+  border-radius: 10px;
+  background: var(--imp-s1);
+  color: var(--imp-tx-2);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+#importSection[data-import-state="reading"] .import-status { border-left-color: var(--imp-info); background: var(--imp-info-soft); color: var(--imp-tx); }
+#importSection[data-import-state="review"] .import-status { border-left-color: var(--imp-ok); }
+#importSection[data-import-state="failed"] .import-status { border-color: rgba(248, 113, 113, 0.5); border-left-color: var(--imp-bad); background: var(--imp-bad-soft); color: var(--imp-tx); }
+#importSection .import-preview .import-preview-chip { padding: 5px 14px 5px 5px; border: 1px solid var(--imp-line-strong); border-radius: 999px; background: var(--imp-s2); color: var(--imp-tx-2); font-size: 13px; }
+#importSection .import-preview .import-preview-chip:hover { border-color: var(--imp-info); color: var(--imp-tx); }
+#importSection .import-preview .import-preview-chip img { width: 56px; height: 36px; max-height: 36px; }
+
+/* ---------- Progress ---------- */
+#importSection .import-stage-panel { display: grid; gap: 14px; padding: 20px 22px; border: 1px solid var(--imp-line); border-radius: 14px; background: var(--imp-s1); }
+.import-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--imp-tx-2); font-size: 13px; }
+.import-progress-head span:first-child { color: var(--imp-tx); font-size: 15px; font-weight: 600; }
+.import-progress-bar { height: 8px; overflow: hidden; border-radius: 4px; background: var(--imp-s3); }
+.import-progress-bar > span { display: block; height: 100%; border-radius: 4px; background: var(--imp-info); transition: width 0.3s ease, background 0.2s ease; }
+.import-progress-bar[aria-valuenow="100"] > span { background: var(--imp-ok); }
+.import-stage-details > summary { width: fit-content; color: var(--imp-info); font-size: 13px; font-weight: 500; cursor: pointer; }
+.import-stage-details[open] > summary { margin-bottom: 8px; }
+#importSection .import-stage-list { grid-template-columns: minmax(0, 1fr); gap: 0; }
+#importSection .import-stage {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 12px;
+  min-height: 0;
+  margin: 0 -10px;
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--imp-line);
+  border-left: 0;
+  border-radius: 8px;
+  color: var(--imp-tx-2);
+  font-size: 14px;
+}
+#importSection .import-stage:last-child { border-bottom: 0; }
+#importSection .import-stage .stage-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--imp-s3); color: var(--imp-tx-3); font-size: 13px; font-weight: 700; }
+#importSection .import-stage .stage-label { color: var(--imp-tx); }
+#importSection .import-stage .stage-status { color: var(--imp-tx-3); font-size: 12px; letter-spacing: 0; }
+#importSection .import-stage .stage-message { color: var(--imp-tx-3); font-size: 12px; }
+#importSection .import-stage.is-pending .stage-icon { background: transparent; box-shadow: inset 0 0 0 1.5px var(--imp-line-strong); }
+#importSection .import-stage.is-pending .stage-label { color: var(--imp-tx-3); }
+#importSection .import-stage.is-running { background: var(--imp-info-soft); }
+#importSection .import-stage.is-running .stage-icon { background: var(--imp-info-soft); box-shadow: inset 0 0 0 1.5px var(--imp-info); color: var(--imp-info); animation: imp-pulse 1.4s ease-in-out infinite; }
+#importSection .import-stage.is-running .stage-status { color: var(--imp-info); font-weight: 500; }
+#importSection .import-stage.is-complete .stage-icon { background: var(--imp-ok); color: var(--imp-ok-ink); }
+#importSection .import-stage.is-complete .stage-status { color: var(--imp-ok); }
+#importSection .import-stage.is-warning { background: var(--imp-warn-soft); }
+#importSection .import-stage.is-warning .stage-icon { background: var(--imp-warn); color: var(--imp-warn-ink); }
+#importSection .import-stage.is-warning .stage-status { color: var(--imp-warn); font-weight: 500; }
+#importSection .import-stage.is-warning .stage-message { color: var(--imp-tx-2); }
+#importSection .import-stage.is-error { background: var(--imp-bad-soft); }
+#importSection .import-stage.is-error .stage-icon { background: var(--imp-bad); color: var(--imp-bad-ink); }
+#importSection .import-stage.is-error .stage-status { color: var(--imp-bad); font-weight: 500; }
+#importSection .import-stage.is-error .stage-message { color: var(--imp-tx-2); }
+#importSection .import-stage-live { color: var(--imp-tx-3); font-size: 12px; }
+@keyframes imp-pulse { 50% { opacity: 0.45; } }
+
+/* ---------- "Check these fields" bar ---------- */
+.import-check { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 14px 16px 14px 18px; border: 1px solid rgba(251, 191, 36, 0.4); border-left: 3px solid var(--imp-warn); border-radius: 12px; background: var(--imp-warn-soft); }
+.import-check-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.import-check-head strong { color: var(--imp-warn); font-size: 14px; font-weight: 600; }
+.import-check-head span { color: var(--imp-tx-2); font-size: 13px; }
+#importSection .import-field-warnings { gap: 8px; }
+#importSection .import-field-warning { min-height: 36px; padding: 0 14px; border: 1px solid rgba(251, 191, 36, 0.55); border-radius: 8px; background: rgba(7, 13, 11, 0.55); color: var(--imp-tx); font-size: 13px; font-weight: 500; }
+#importSection button.import-field-warning:hover { border-color: var(--imp-warn); background: var(--imp-warn); color: var(--imp-warn-ink); }
+#importSection button.import-field-warning:focus-visible { outline: 2px solid var(--imp-info); outline-offset: 2px; }
+#importSection span.import-field-warning { border-style: dashed; color: var(--imp-tx-2); }
+
+/* ---------- Review summary ---------- */
+#importSection .import-summary { display: grid; gap: 16px; padding: 20px 22px; border: 1px solid var(--imp-line); border-radius: 14px; background: var(--imp-s1); }
+.import-cards-strip { display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: flex-end; }
+.import-cards-strip > div { display: grid; gap: 6px; }
+.import-cards-strip > div > span { color: var(--imp-tx-2); font-size: 12px; font-weight: 500; }
+.import-cards-strip > div:first-child > span { color: var(--imp-ok); }
+.import-cards-strip > div:first-child .playing-card { box-shadow: 0 0 0 2px var(--imp-ok); }
+.import-cards-row { display: flex; gap: 6px; }
+.import-cards-row .playing-card { width: 42px; height: 58px; aspect-ratio: auto; border-radius: 6px; background: #f4f1e8; color: #1a1a1a; box-shadow: none; font-weight: 600; }
+.import-cards-strip > div:first-child .import-cards-row .playing-card { box-shadow: 0 0 0 2px var(--imp-ok); }
+.import-cards-row .playing-card.red { color: #c0322b; }
+.import-cards-row .playing-card.empty { border: 1px dashed var(--imp-line-strong); background: var(--imp-s2); color: var(--imp-tx-3); box-shadow: none; }
+.import-cards-row .card-rank { font-size: 17px; line-height: 1.1; }
+.import-cards-row .card-suit { margin: 0; font-size: 16px; line-height: 1.1; }
+#importSection .import-meta { gap: 12px; }
+#importSection .import-meta div,
+#importSection .import-meta label,
+#importSection .import-card-edits label { padding: 12px 14px; border: 1px solid var(--imp-line); border-radius: 10px; background: var(--imp-s2); }
+#importSection .import-meta span,
+#importSection .import-card-edits span { margin-bottom: 4px; color: var(--imp-tx-2); font-size: 12px; font-weight: 500; text-transform: none; }
+#importSection .import-meta strong { color: var(--imp-tx); font-size: 14px; font-weight: 600; }
+#importSection .import-meta input,
+#importSection .import-card-edits input,
+#importSection .import-hero-field select { min-height: 38px; padding: 0 10px; border: 1px solid var(--imp-line-strong); border-radius: 8px; background: #0a120f; color: var(--imp-tx); font-size: 14px; font-weight: 500; }
+#importSection .import-meta input:focus,
+#importSection .import-card-edits input:focus,
+#importSection .import-hero-field select:focus { border-color: var(--imp-info); outline: 2px solid rgba(96, 165, 250, 0.35); outline-offset: 0; }
+#importSection .import-card-edits { gap: 12px; }
+/* Editable fields the user can change stay neutral; a card warning is the only red in this card. */
+#importSection .import-card-warning { border: 1px solid rgba(248, 113, 113, 0.5); border-left: 3px solid var(--imp-bad); border-radius: 10px; background: var(--imp-bad-soft); color: var(--imp-tx); }
+#importSection .import-card-warning strong { color: var(--imp-bad); }
+#importSection .import-hero-field { color: var(--imp-ok); font-weight: 500; }
+#importSection .import-hero-note { color: var(--imp-tx-2); font-size: 13px; }
+#importSection .import-player-list span { border: 1px solid var(--imp-line-strong); border-radius: 999px; background: var(--imp-s2); color: var(--imp-tx-2); font-size: 12px; }
+#importSection .import-player-list span.is-hero { border-color: var(--imp-ok); background: var(--imp-ok-soft); color: var(--imp-ok); font-weight: 600; }
+#importSection .import-notes { margin: 0; padding: 12px 14px 12px 30px; border: 1px solid rgba(251, 191, 36, 0.3); border-left: 3px solid var(--imp-warn); border-radius: 10px; background: var(--imp-warn-soft); color: var(--imp-tx-2); font-size: 13px; line-height: 1.5; }
+#importSection .import-notes li::marker { color: var(--imp-warn); }
+
+/* ---------- Imported hand: street rail, timeline chips, decision panel ---------- */
+#importSection .import-builder-layout .street-navigator > button { color: var(--imp-tx-3); }
+#importSection .import-builder-layout .street-navigator > button:not([disabled]) { color: var(--imp-tx-2); }
+#importSection .import-builder-layout .street-navigator > button[aria-current="step"] { color: var(--imp-tx); }
+#importSection .import-builder-layout .street-navigator > button[aria-current="step"] > span { border-color: var(--imp-info); background: var(--imp-info-soft); color: var(--imp-info); }
+#importSection .import-builder-layout .street-navigator > button:not([disabled]):not([aria-current="step"]) > span { border-color: var(--imp-ok); color: var(--imp-ok); }
+
+/* The complete hand has up to four streets of actions, so the timeline grows instead of clipping at a fixed height. */
+#importSection .import-builder-layout .street-navigator { counter-reset: imp-step; }
+#importSection .import-builder-layout .street-navigator > button > span:empty::before { counter-increment: imp-step; content: counter(imp-step); font-size: 12px; font-weight: 600; }
+
+#importSection .timeline-street-label {
+  display: block;
+  place-items: unset;
+  justify-items: start;
+  flex: 0 0 100%;
+  margin: 10px 0 0;
+  padding: 0 0 0 8px;
+  border: 0;
+  border-left: 3px solid currentColor;
+  border-radius: 0;
+  background: transparent !important;
+  font-size: 11px !important;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: default;
+}
+#importSection .timeline-street-label:first-child { margin-top: 0; }
+#importSection .timeline-street-label { color: var(--imp-tx-2) !important; }
+
+#importSection .import-timeline-action {
+  min-height: 60px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--imp-line) !important;
+  border-left: 3px solid var(--imp-line-strong) !important;
+  border-radius: 9px;
+  background: var(--imp-s2) !important;
+  color: var(--imp-tx-2);
+  text-align: left;
+}
+#importSection .import-timeline-action [data-action-description] { display: block; color: var(--imp-tx); font-size: 13px; font-weight: 600; }
+#importSection .import-timeline-action small { color: var(--imp-tx-3); font-size: 12px; }
+/* Who: Hero is green, villains stay slate. */
+#importSection .import-timeline-action[data-action-role="hero"] { border-color: rgba(52, 211, 153, 0.5) !important; background: var(--imp-ok-soft) !important; }
+#importSection .import-timeline-action[data-action-role="hero"] [data-action-description] { color: var(--imp-ok); }
+#importSection .import-timeline-action[data-villain="0"] { border-left-color: var(--imp-villain-0) !important; }
+#importSection .import-timeline-action[data-villain="1"] { border-left-color: var(--imp-villain-1) !important; }
+#importSection .import-timeline-action[data-villain="2"] { border-left-color: var(--imp-villain-2) !important; }
+#importSection .import-timeline-action[data-villain="3"] { border-left-color: var(--imp-villain-3) !important; }
+#importSection .import-timeline-action[data-villain="4"] { border-left-color: var(--imp-villain-4) !important; }
+#importSection .import-timeline-action:not([disabled]):hover { border-color: var(--imp-info) !important; }
+/* Selected: blue, and it wins over the Hero tint. */
+#importSection .import-timeline-action.is-selected,
+#importSection .import-timeline-action[data-action-role].is-selected { border-color: var(--imp-info) !important; background: var(--imp-info-soft) !important; box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.35); }
+#importSection .import-timeline-action.is-selected [data-action-description] { color: var(--imp-tx); }
+#importSection .import-timeline-action:focus-visible { outline: 2px solid var(--imp-info); outline-offset: 2px; }
+/* Locked until an earlier action is corrected. */
+#importSection .import-timeline-action[disabled] { border-style: dashed !important; background: transparent !important; opacity: 0.5; cursor: not-allowed; }
+
+#importSection .import-decision-panel { padding: 16px; border-top: 1px solid var(--imp-line); }
+#importSection .import-decision-panel h2 { color: var(--imp-tx); font-size: 16px; font-weight: 600; }
+#importSection .import-decision-panel > p { color: var(--imp-tx-2); font-size: 13px; }
+#importSection .import-decision-panel .section-kicker { color: var(--imp-info); }
+#importSection .import-action-editor { border-top-color: var(--imp-line); }
+#importSection .import-action-editor label { color: var(--imp-tx-2); font-size: 12px; }
+#importSection .import-action-editor select,
+#importSection .import-action-editor input { border: 1px solid var(--imp-line-strong); border-radius: 8px; background: #0a120f; color: var(--imp-tx); }
+#importSection .import-action-editor select:focus,
+#importSection .import-action-editor input:focus { border-color: var(--imp-info); outline: 2px solid rgba(96, 165, 250, 0.35); outline-offset: 0; }
+#importSection .import-edit-warning { padding: 10px 12px; border-left: 3px solid var(--imp-warn); border-radius: 6px; background: var(--imp-warn-soft); color: var(--imp-tx-2); font-size: 13px; line-height: 1.45; }
+#importSection .import-builder-empty { border-color: var(--imp-line); background: var(--imp-s1); }
+
+@media (max-width: 1000px) {
+  #importSection.import-panel { grid-template-columns: minmax(0, 1fr); }
+  #importSection > .import-dropzone { min-height: 280px; }
+}
+@media (max-width: 560px) {
+  #importSection:not([data-import-state="empty"]) > .import-dropzone { grid-template-columns: auto minmax(0, 1fr); }
+  #importSection:not([data-import-state="empty"]) .import-dropzone-actions { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #importSection .import-stage.is-running .stage-icon { animation: none; }
+  .import-progress-bar > span { transition: none; }
+}

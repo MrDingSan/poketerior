@@ -1,0 +1,76 @@
+/* PokeTerior design tokens: the single source for color and type, taken from mockups/analysis-tabs.html.
+   Loaded after the legacy stylesheets so their older variable names resolve to these values; component
+   files (analysis-workspace.css, import-screen.css) read the --pt-* names directly. */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces, darkest to lightest */
+  --pt-bg: #070d0b;
+  --pt-s1: #101a17;          /* cards and panels */
+  --pt-s2: #16231f;          /* raised: active tab, inputs, chips */
+  --pt-s3: #1f2f29;          /* tracks and pressed states */
+  --pt-bd: #24362f;          /* hairlines */
+  --pt-bd-strong: #3a4f46;   /* inputs and emphasized dividers */
+
+  /* Text: 16:1, 9:1, 5.5:1 on --pt-s1 */
+  --pt-tx: #f2f5f3;
+  --pt-t2: #b8c4bf;
+  --pt-mu: #8a9993;
+
+  /* Signals. Green = primary, positive, Hero. Amber = aggressive action or needs a check.
+     Red = fold or failure. Blue = interactive, selected, in progress. */
+  --pt-ac: #34d399;
+  --pt-ac-soft: rgba(52, 211, 153, 0.14);
+  --pt-ac-ink: #052e20;
+  --pt-bet: #f5b544;
+  --pt-bet-soft: rgba(245, 181, 68, 0.13);
+  --pt-bet-ink: #3a2503;
+  --pt-bad: #f07167;
+  --pt-bad-soft: rgba(240, 113, 103, 0.13);
+  --pt-bad-ink: #3d0d0a;
+  --pt-info: #60a5fa;
+  --pt-info-soft: rgba(96, 165, 250, 0.13);
+  --pt-info-ink: #0b2545;
+
+  /* Type */
+  --pt-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pt-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Legacy vocabulary (styles.css, poketerior-dashboard.css) resolved to the tokens above.
+     Panels become solid cards instead of translucent gradients. */
+  --bg: var(--pt-bg);
+  --surface: var(--pt-s1);
+  --surface-raised: var(--pt-s1);
+  --panel: var(--pt-s1);
+  --panel-2: var(--pt-s2);
+  --surface-0: var(--pt-bg);
+  --surface-1: var(--pt-s1);
+  --surface-2: var(--pt-s2);
+  --border: var(--pt-bd);
+  --border-subtle: var(--pt-bd);
+  --border-strong: var(--pt-bd-strong);
+  --line: var(--pt-bd);
+  --text: var(--pt-tx);
+  --text-secondary: var(--pt-t2);
+  --muted: var(--pt-mu);
+  --accent: var(--pt-ac);
+  --accent-strong: #10b981;
+  --accent-soft: var(--pt-ac-soft);
+  --good: var(--pt-ac);
+  --warn: var(--pt-bet);
+  --bad: var(--pt-bad);
+  --danger: var(--pt-bad);
+  --focus-ring: var(--pt-info);
+}
+
+html { background: var(--pt-bg); }
+body {
+  background: var(--pt-bg);
+  color: var(--pt-tx);
+  font-family: var(--pt-font);
+}
+code, kbd, samp, pre { font-family: var(--pt-mono); }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--pt-info) !important;
+  outline-offset: 2px;
+}

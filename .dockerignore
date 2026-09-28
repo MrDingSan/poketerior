@@ -1,0 +1,11 @@
+node_modules
+public/vendor/tesseract
+logs
+tmp
+.env
+.env.*
+.git
+.worktrees
+.claude
+.superpowers
+*.DS_Store

@@ -1,0 +1,90 @@
+/* Hand stage: the three-part layout shared by the preflop builder, the postflop builder, and screenshot import.
+
+     row 1   street rail  |  table  |  decision panel      all three share one height
+     row 2   decision path, full width, with every action box the same size
+
+   The dashboard stylesheet sized the rail (478px), the table (340px), and the path (128px) independently, so the
+   three parts ended at different heights and the path clipped once a hand reached later streets. */
+
+/* The decision path grows with the hand instead of clipping, at every width. */
+.hand-stage .timeline-panel,
+.hand-stage .postflop-timeline-panel,
+.hand-stage .import-builder-timeline { height: auto; min-height: 0; padding: 14px 16px; overflow: visible; }
+
+/* Every action box is the same size, on every street. */
+.hand-stage .import-timeline-streets,
+.hand-stage .postflop-timeline,
+.hand-stage .preflop-timeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  align-items: stretch;
+  overflow: visible;
+}
+.hand-stage .timeline-street-label { grid-column: 1 / -1; justify-self: start; align-self: auto; }
+/* The grid's own gap replaces the arrow separators; left in, they become grid items and throw off
+   column alignment between rows (the preflop path shows different item counts per row). */
+.hand-stage .timeline-arrow { display: none; }
+.hand-stage .timeline-action {
+  width: 100%;
+  min-width: 0;
+  min-height: 62px;
+  box-sizing: border-box;
+  align-content: center;
+}
+.hand-stage .timeline-action strong { white-space: normal; overflow-wrap: anywhere; }
+
+/* Stacked layout (below 1051px): the table keeps its height, the path row grows with its content instead of
+   overflowing a fixed 128px track onto whatever follows. */
+.hand-stage .table-workspace,
+.hand-stage .postflop-table-workspace { grid-template-rows: 340px auto; }
+@media (max-width: 700px) {
+  .hand-stage .table-workspace,
+  .hand-stage .postflop-table-workspace { grid-template-rows: 240px auto; }
+}
+@media (max-width: 1050px) {
+  .hand-stage .street-navigator { gap: 20px; align-items: center; padding: 12px 16px; }
+  .hand-stage .street-navigator > button { flex: 1 0 auto; }
+  /* A button in the two-column rail takes its own height, not the decision panel's. */
+  .hand-stage .builder-rail > button,
+  .hand-stage .postflop-rail > button { align-self: start; }
+}
+
+@media (min-width: 1051px) {
+  .hand-stage {
+    grid-template-columns: 196px minmax(0, 1fr) 388px;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    align-items: stretch;
+  }
+  /* Table and path become direct grid items so they can sit in different rows. */
+  .hand-stage .table-workspace,
+  .hand-stage .postflop-table-workspace { display: contents; }
+
+  /* Row 1: the three parts stretch to the tallest one. */
+  .hand-stage .hand-progress-region,
+  .hand-stage .street-navigator { grid-column: 1; grid-row: 1; height: auto; min-height: 0; align-self: stretch; }
+  .hand-stage .poker-table-frame,
+  .hand-stage .postflop-table,
+  .hand-stage .import-builder-table { grid-column: 2; grid-row: 1; height: auto; min-height: 392px; }
+  .hand-stage .builder-rail,
+  .hand-stage .postflop-rail { grid-column: 3; grid-row: 1; height: auto; min-height: 0; }
+
+  /* Row 2: the decision path spans all three columns. */
+  .hand-stage .timeline-panel,
+  .hand-stage .postflop-timeline-panel,
+  .hand-stage .import-builder-timeline { grid-column: 1 / -1; grid-row: 2; }
+
+  /* Street steps share the rail's height evenly, so the rail ends where the table does. */
+  .hand-stage .street-navigator { display: grid; grid-auto-rows: minmax(63px, 1fr); align-content: stretch; }
+  .hand-stage .hand-progress-region { display: flex; flex-direction: column; }
+  .hand-stage .hand-progress-list { flex: 1; grid-auto-rows: minmax(63px, 1fr); }
+
+  /* The decision panel absorbs spare height, so the buttons under it end level with the table. */
+  .hand-stage .builder-rail > :first-child,
+  .hand-stage .postflop-rail > :first-child { flex: 1 1 auto; }
+  /* Except while waiting on board cards: that panel is just a one-line prompt, so stretching it
+     to the table's height left a large blank gap inside the card. Let the leftover space fall
+     below the rail instead. */
+  .hand-stage .postflop-rail > .is-board-prompt { flex: 0 0 auto; }
+}
