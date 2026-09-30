@@ -9,7 +9,7 @@ PokeTerior is a street-by-street coach for no-limit hold'em. You enter a hand, e
 
 Built for the [Nebius x NVIDIA Global AI Hackathon 2026](https://nebiusglobalaihackathon.devpost.com/) (Best Apps and Agents track).
 
-**Live demo:** https://poketerior-pm4dxk7njq-uc.a.run.app
+**Live demo:** https://poketerior-pm4dxk7njq-uc.a.run.app · **Demo video:** https://www.youtube.com/watch?v=N7NqJBSsXHE
 
 ---
 
