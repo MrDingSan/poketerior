@@ -1,4 +1,5 @@
 import { checkPreflopWidth, expectedPreflopBand, widthCorrectionNote } from "./rangeWidthPolicy.js";
+import { cardText } from "./cardText.js";
 import { callGemini } from "../llm/geminiClient.js";
 import { callNebius } from "../llm/nebiusClient.js";
 import { callOpenRouter } from "../llm/openRouterClient.js";
@@ -8,14 +9,32 @@ import {
   applyFocusedActionRepair,
   repairImportedHeroHandFromNotes,
   attributeYellowBubblesToHero,
-  shouldVerifyHeroHandWithFocusedVision,
 } from "./importRepair.js";
 import { normalizeAndValidateImportedCards } from "./importValidation.js";
 import { formatPokerSkillContext, selectPokerSkills } from "./pokerSkill.js";
 import { deriveHeroHandFacts } from "./handFacts.js";
+import {
+  applyGroupDecisions,
+  applyGuardrailFixes,
+  checkGroupDecisions,
+  checkListSummary,
+  codeListSummary,
+  villainLine,
+  boardThroughStreet,
+  formatGroupTable,
+  groupRangeByBoard,
+  intersectCombos,
+  keepFloorCombos,
+  narrowingLists,
+  parseCardList,
+  parseRangeCombos,
+  rangeTextFromCombos,
+  splitGroupsByRange,
+  weightedGroupsFromKept,
+} from "./rangeGroups.js";
 import { validateStrategicOutput } from "./strategicOutputValidation.js";
 import { cropBoardImage, cropBottomSeatImage } from "./heroCardCrop.js";
-import { stripNonDecisionActions, validateImportedActionConsistency } from "./importActionConsistency.js";
+import { normalizeNonRaises, stripNonDecisionActions, validateImportedActionConsistency } from "./importActionConsistency.js";
 
 const SYSTEM_INSTRUCTION = `You are Poker Coach, an expert no-limit hold'em analysis assistant.
 Use the supplied poker math as the source of truth for combos, pot odds, equity, and action history.
@@ -133,8 +152,10 @@ function uniqueModels(models) {
   return models.filter((model, index, list) => model && list.indexOf(model) === index);
 }
 
+// Overload errors are per model ("high demand" on one Gemini model says nothing about the next one), so they
+// move on to the next model too instead of abandoning the provider.
 function shouldTryNextModel(error) {
-  return /quota|rate|429|exceeded|RESOURCE_EXHAUSTED|not found|not available|unsupported|invalid|timed out|timeout|404|400/i.test(
+  return /quota|rate|429|exceeded|RESOURCE_EXHAUSTED|not found|not available|unsupported|invalid|timed out|timeout|404|400|high demand|overloaded|unavailable|503/i.test(
     error.message,
   );
 }
@@ -580,6 +601,24 @@ function priorStreetLockRule(spot) {
   return `\n- The following streets were already analyzed earlier in this hand and are locked; copy each one's rangeText unchanged into the matching streetSummaries entry, do not resize or re-derive it, and narrow only from the last locked street onward:\n${lines}`;
 }
 
+// An earlier decision in this hand saw villain on the same street with fewer actions (e.g. flop after only
+// a check, before the bet and call). That range is an upper bound: later actions only remove hands.
+function rangeCeilingRule(spot) {
+  const ceilings = Array.isArray(spot?.rangeCeilings) ? spot.rangeCeilings.filter((item) => item?.street && item?.rangeText) : [];
+  if (!ceilings.length) return "";
+  const lines = ceilings.map((item) => `  * ${item.street}: "${item.rangeText}"`).join("\n");
+  return `\n- Earlier in this hand villain's range on these streets was already narrowed to the ranges below, before the rest of that street's action. Each street's rangeText must be a subset of its range here; start from it and only remove hands for the actions that followed, never add hands back:\n${lines}`;
+}
+
+// The reverse of rangeCeilingRule: a later point on the same street (more actions) was analyzed first.
+// Villain's range here must contain that one, since the extra actions can only have removed hands.
+function rangeFloorRule(spot) {
+  const floors = Array.isArray(spot?.rangeFloors) ? spot.rangeFloors.filter((item) => item?.street && item?.rangeText) : [];
+  if (!floors.length) return "";
+  const lines = floors.map((item) => `  * ${item.street}: "${item.rangeText}"`).join("\n");
+  return `\n- Later in this hand, after more action on these streets, villain's range was already narrowed to the ranges below. Each street's rangeText here must contain every hand in its range below:\n${lines}`;
+}
+
 const RANGE_NOTATION_RULES = `Range notation (every rangeText is machine-parsed; invalid tokens are dropped):
 - Allowed tokens only: pairs (TT, 22+, 55-99), hand classes (AKs, AKo, AK = both), kicker ranges with the same top card (A2s+, KTo+, KQs-KTs), connector or gapper runs as a dash between two hands with the same gap (54s-T9s, 64s-97s), and exact combos (AhKh).
 - Never use placeholders or words: no "Kxs", "suited Kx", "any two", "broadways", or percentages inside rangeText.
@@ -685,7 +724,9 @@ Rules:
 - For a river request, streetSummaries must contain preflop, flop, turn, and river entries. For a turn request, include preflop, flop, and turn. For a flop request, include preflop and flop.
 - The preflop streetSummaries[0].rangeText must be the villain preflop range after the preflop action line.
 - Range narrowing must be explained street by street. For every flop/turn/river streetSummaries entry, fill "narrowing" by applying poker hand-reading logic to the exact line villain took on that street:
-  * Passive lines (check, check-call) remove the hands that would normally bet or raise for value or protection: strong made hands and nut draws that prefer check-raising, plus hands that would lead out on that texture. They keep medium-strength showdown hands, weak pairs, draws with enough equity to call, slowplays, and float hands.
+  * Checking first (villain acts before anyone has bet on the street, e.g. BB checking to the preflop raiser, or the preflop caller checking out of position) is villain's default with nearly the whole range: strong hands check too, planning to check-raise or check-call. It removes only the few hands that would lead out (donk-bet) on that texture - usually no more than about 10% of the previous street's combos. Do not strip strong made hands or draws for a check alone; the later check-raise, call, or fold is what narrows the range.
+  * Checking behind (villain is last to act and declines to bet after Hero checked) is different: it removes most hands that would bet for value or protection.
+  * Passive lines (check-call, check behind) remove the hands that would normally bet or raise for value or protection: strong made hands and nut draws that prefer check-raising, plus hands that would lead out on that texture. They keep medium-strength showdown hands, weak pairs, draws with enough equity to call, slowplays, and float hands.
   * A call (not a raise) after checking removes the hands that would check-raise for value or as a semi-bluff. State this explicitly using "notTaken": absence of a check-raise removes sets/two pair/top-of-range value and most high-equity combo draws (frequency-weighted, not fully), leaving the capped/medium part of the range plus some traps.
   * Bet size matters: a small bet (about 1/3 pot or less) lets nearly all pairs, draws and backdoors continue, so the range shrinks mostly by removing check-raise hands and pure air; a half-pot bet needs about 33% equity, folding out the weakest air and low-equity hands; a pot-size bet or larger folds most weak pairs and marginal draws. Compare the size to the pot to name what folded.
   * Use "removed" and "kept" to name specific hand classes from the previous street's rangeText (e.g. "sets 22-99", "A5s-A2s without a flush draw"), not vague labels. Every hand class in "removed" must appear in the previous street's rangeText, and the current street's rangeText must equal previous range minus removed (plus nothing new).
@@ -700,7 +741,7 @@ Rules:
 ${RANGE_NOTATION_RULES}
 
 Preflop width:
-${preflopWidthRule(spot, math)}${priorStreetLockRule(spot)}
+${preflopWidthRule(spot, math)}${priorStreetLockRule(spot)}${rangeCeilingRule(spot)}${rangeFloorRule(spot)}
 - Fact-check hand-class labels against the actual board before writing them. Do not call a hand class a "strong draw", "flush draw", "straight draw", or "semi-bluff" unless its live combos have a real flush draw or straight draw on that street. Overcards/backdoors with no direct draw should be labeled as overcards, air, weak showdown, or speculative floats instead.
 - On turn/river boards, recompute draw status from the visible board. Example: on 2d 8c Qd 7s, AJs and A5s are not strong draws by default; only specific combos with an actual four-flush or real straight draw qualify.
 - If the board is paired (two cards of the same rank, e.g. Qd 8h 4h Qc 7c), recheck every pocket pair in the range against it: a pocket pair matching a non-paired board rank makes trips, and combined with the board's own pair that is a full house (e.g. on Qd 8h 4h Qc 7c, pocket 77 is sevens full of queens, and pocket QQ is quads) - never bucket these as "thin value/showdown" or weaker. A pocket pair matching the board's paired rank makes quads. Classify weightedGroups and the action-bucket labels by this corrected strength, not by the pair's rank in isolation.
@@ -899,6 +940,9 @@ export async function runLLMRangeInterpreter(
   { spot, math, rootDir, config, signal },
   { callProvider = callReasoningProvider } = {},
 ) {
+  if (config?.rangeGroupDecisions && POSTFLOP_STREETS.includes(spot?.street) && String(spot?.board || "").trim()) {
+    return runGroupedRangeInterpreter({ spot, math, rootDir, config, signal }, { callProvider });
+  }
   const rangeMath = rangeInterpreterMathPayload(math);
   const query = [
     "Harrington hand reading range construction",
@@ -933,10 +977,12 @@ export async function runLLMRangeInterpreter(
     systemInstruction: RANGE_INTERPRETER_SYSTEM_INSTRUCTION,
     prompt,
     temperature: 0.12,
-    maxTokens: 4096,
+    // Reasoning tokens count against this cap. A typical answer needs ~2.2k, but Nemotron and gemini-2.5-flash
+    // sometimes think for 3-4k first, which truncated the JSON at 4096; the cap only bounds, it doesn't slow.
+    maxTokens: RANGE_INTERPRETER_MAX_TOKENS,
     timeoutMs: 45000,
     signal,
-    validate: validateRangeInterpreterOutput,
+    validate: (candidate) => validateRangeInterpreterOutput(candidate, spot?.street),
   });
   const firstDraft = extractJson(response.text);
   const attempts = [{ interpretation: firstDraft, widthCheck: checkPreflopWidth(firstDraft, band) }];
@@ -997,7 +1043,365 @@ export async function runLLMRangeInterpreter(
   };
 }
 
+const POSTFLOP_STREETS = ["flop", "turn", "river"];
+
+const RANGE_GROUP_SYSTEM_INSTRUCTION = `You are Poker Coach's range narrowing module.
+Code has already sorted every combo villain can hold into groups by what the combo actually is on the board (made hand and draw, per exact suits). Those facts are correct; never recompute or contradict them.
+Your only job is poker judgment: for each group, decide whether villain still holds it after the action on this street, and say why in one short sentence tied to the action and bet size.
+Refer to groups by their id. In free-text fields describe hands by group label (e.g. "sets", "second pair + gutshot"), not by hand names, and never claim a draw or hand strength the table does not list.
+Each "why" is shown to the user next to that group's label, so it must describe exactly that group: a "flush" is a made flush, not a flush draw; a group with no draw in its label has no draw.
+If the action is genuinely ambiguous, lean toward keeping a borderline group, but still remove hands the action clearly rules out.
+Return only valid JSON. Do not wrap it in markdown.`;
+
+function formatActionRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return "no actions";
+  return rows
+    .map((row) => (row && typeof row === "object" ? [row.actor, row.action, row.amount].filter((part) => part !== undefined && part !== null && part !== "").join(" ") : String(row)))
+    .join(" -> ");
+}
+
+function actionsThroughStreet(spot, street) {
+  const all = spot?.allStreetActions || {};
+  const lastIndex = ["preflop", ...POSTFLOP_STREETS].indexOf(street);
+  return ["preflop", ...POSTFLOP_STREETS]
+    .slice(0, lastIndex + 1)
+    .map((name) => `${name}: ${formatActionRows(all[name])}`)
+    .join("\n");
+}
+
+export function buildRangeGroupDecisionPrompt({ spot = {}, street, board = [], heroCards = [], groups = [], deadCards = [], entryCombos = 0, selectedSkills = [] }) {
+  return `Narrow villain's range on the ${street}.
+
+Villain: ${spot.villainPosition || "unknown"}. Hero: ${spot.heroPosition || "unknown"} holding ${heroCards.join(" ") || "unknown"} (those cards are not in villain's range). Range mode: ${spot.rangeMode || "loose"}.
+Board on the ${street}: ${board.join(" ")}.
+
+Action history through the ${street} (amounts in bb):
+${actionsThroughStreet(spot, street)}
+
+Villain's range entering the ${street}: ${entryCombos} combos, grouped by what each combo holds on this board.
+Columns: id | what the combo holds | combos | hand classes (partial classes list their exact combos).
+${formatGroupTable(groups, deadCards)}
+
+Decide for EVERY group id whether villain still holds it after villain's actions on the ${street}:
+- "keep": villain takes exactly this line with these hands at a meaningful frequency.
+- "drop": villain would usually have played these hands differently (folded, raised instead of called, bet instead of checked, called instead of raised).
+- Reason from what villain did AND did not do on this street (e.g. no check-raise, no lead) and from the bet size relative to the pot.
+- Calling a bet needs showdown value or real draw equity: hands with no pair and no draw (the "no pair" / "two overcards" groups with no draw listed) mostly fold, and the weakest pairs fold to larger bets. A half-pot bet needs about 25% equity, a pot-size bet about 33%.
+- A check-call (not a check-raise) removes most of the strongest value (sets, two pair, straights and better) and the best combo draws only partially; it keeps medium made hands, draws with enough equity, and some traps.
+- A raise or check-raise keeps strong value and the best draws (combo draws, nut or strong flush draws, open-enders) and drops the medium and weak made hands that would just call.
+- A bet keeps value and semi-bluffs; checking behind keeps showdown hands and gives up some air.
+- Keeping every group is almost never right once villain has faced or made a bet; the answer must remove what this line rules out.
+- If villain took no action yet on this street, keep every group.
+
+Return this exact JSON shape:
+{
+  "decisions": [ { "group": "G1", "decision": "keep" | "drop", "why": "one short sentence" } ],
+  "actionsOnStreet": "villain's actions on this street in order, with size as a fraction of pot",
+  "notTaken": "aggressive or alternative actions villain did NOT take and what their absence rules out",
+  "sizingRead": "what the bet size says about which groups continue",
+  "keptSummary": "one or two sentences: which kinds of hands villain keeps (by group label) and why, e.g. 'Keeps sets, two pair and combo draws because ...'",
+  "removedSummary": "one or two sentences: which kinds of hands this action removes (by group label) and why",
+  "reasoning": "two or three sentences on how this street's action shapes the range",
+  "summary": "one sentence describing the range after this street",
+  "confidence": "low" | "medium" | "high",
+  "keyDrivers": ["short range-driving observation"],
+  "caveats": ["short uncertainty or missing-read caveat"]
+}
+
+Selected PokerSkill-style layers:
+${formatPokerSkillContext(selectedSkills)}`;
+}
+
+export function validateRangeGroupDecisions(candidate, groupIds = []) {
+  let parsed;
+  try {
+    parsed = extractJson(candidate?.text);
+  } catch (error) {
+    return { valid: false, reasons: [`invalid range group JSON: ${error.message}`] };
+  }
+  const decisions = Array.isArray(parsed?.decisions) ? parsed.decisions : null;
+  if (!decisions?.length) return { valid: false, reasons: ["range group JSON has no decisions"] };
+  const known = new Set(groupIds);
+  const unknown = decisions.map((item) => item?.group).filter((id) => !known.has(id));
+  if (unknown.length) return { valid: false, reasons: [`decisions name unknown groups: ${unknown.join(", ")}`] };
+  const bad = decisions.filter((item) => !["keep", "drop"].includes(String(item?.decision).toLowerCase()));
+  if (bad.length) return { valid: false, reasons: [`decisions must be keep or drop (${bad.map((item) => item.group).join(", ")})`] };
+  if (!decisions.some((item) => String(item.decision).toLowerCase() === "keep")) {
+    return { valid: false, reasons: ["every group was dropped; villain must hold something"] };
+  }
+  return { valid: true, reasons: [] };
+}
+
+// The preflop part of a postflop request: the same prompt and width repair as a preflop request, with the
+// postflop board, actions, and decision stripped so the model sizes only the preflop range.
+function preflopOnlySpot(spot) {
+  const {
+    lockedPriorStreetRanges,
+    freezeToPriorStreetRange,
+    streetActions,
+    decisionNode,
+    decisionDescription,
+    legalActions,
+    recordedHeroAction,
+    recordedHeroAmount,
+    facingAllIn,
+    ...rest
+  } = spot;
+  const onlyPreflop = (items) => (Array.isArray(items) ? items.filter((item) => item?.street === "preflop") : items);
+  return {
+    ...rest,
+    street: "preflop",
+    board: "",
+    allStreetActions: { preflop: spot.allStreetActions?.preflop || [] },
+    actionLine: formatActionRows(spot.preflopActions || spot.allStreetActions?.preflop),
+    rangeCeilings: onlyPreflop(spot.rangeCeilings),
+    rangeFloors: onlyPreflop(spot.rangeFloors),
+  };
+}
+
+// Postflop ranges from group decisions: code classifies each combo on the board (rangeGroups.js), the model
+// only keeps or drops whole groups, and each street's rangeText, Kept/Removed text and chart buckets are all
+// built from the same kept combos, so they cannot contradict each other.
+async function runGroupedRangeInterpreter({ spot, math, rootDir, config, signal }, { callProvider }) {
+  const rangeMath = rangeInterpreterMathPayload(math);
+  const selectedSkills = selectPokerSkills({ spot, math: rangeMath });
+  // Group decisions use their own Nebius model (see env.js); everything else keeps the default.
+  const groupConfig = config.nebiusRangeModel
+    ? { ...config, nebiusModel: config.nebiusRangeModel, nebiusFallbackModels: config.nebiusRangeFallbackModels || [] }
+    : config;
+  const heroCards = parseCardList(spot.heroHand);
+  const boardCards = parseCardList(spot.board);
+  const locks = new Map((spot.lockedPriorStreetRanges || []).filter((item) => item?.street && item?.rangeText).map((item) => [item.street, item]));
+  const ceilings = new Map((spot.rangeCeilings || []).filter((item) => item?.street && item?.rangeText).map((item) => [item.street, item.rangeText]));
+  const floors = new Map((spot.rangeFloors || []).filter((item) => item?.street && item?.rangeText).map((item) => [item.street, item.rangeText]));
+  const caveats = [];
+  const modelFailures = [];
+  const prompts = [];
+  const guardrails = [];
+  let lastResponse = null;
+
+  const lockedPreflop = String(spot?.lockedPreflopRange?.rangeText || "").trim();
+  let preflopSummary;
+  let rangeWidth;
+  let preflopResult = null;
+  if (lockedPreflop) {
+    const width = checkPreflopWidth({ streetSummaries: [{ street: "preflop", rangeText: lockedPreflop }] }, null);
+    preflopSummary = { street: "preflop", reasoning: "Preflop range carried over from earlier in this hand.", rangeText: lockedPreflop };
+    rangeWidth = { percent: width.percent, combos: width.combos, band: null, withinBand: true, locked: true, attempts: [width.percent] };
+  } else {
+    preflopResult = await runLLMRangeInterpreter({ spot: preflopOnlySpot(spot), math, rootDir, config, signal }, { callProvider });
+    const interpretation = preflopResult.rangeInterpretation;
+    preflopSummary = (interpretation.streetSummaries || []).find((item) => item?.street === "preflop") || {
+      street: "preflop",
+      reasoning: interpretation.summary || "",
+      rangeText: interpretation.rangeText || "",
+    };
+    rangeWidth = preflopResult.rangeWidth;
+    lastResponse = preflopResult;
+    modelFailures.push(...(preflopResult.modelFailures || []));
+    prompts.push({ street: "preflop", prompt: preflopResult.debug?.prompt });
+  }
+
+  const summaries = [preflopSummary];
+  let previousText = preflopSummary.rangeText;
+  let finalKept = [];
+  let finalDeadCards = heroCards;
+  let finalAnswer = null;
+  const requestedIndex = POSTFLOP_STREETS.indexOf(spot.street);
+  for (const street of POSTFLOP_STREETS.slice(0, requestedIndex + 1)) {
+    const board = boardThroughStreet(boardCards, street);
+    const deadCards = [...heroCards, ...board];
+    const fullEntry = parseRangeCombos(previousText, deadCards);
+    const fullGroups = groupRangeByBoard(fullEntry, board);
+    // An earlier analysis of this street (before villain's later actions) already ruled some combos out:
+    // the model only decides on the rest, and the ruled-out ones are listed as removed with that reason.
+    let entry = fullEntry;
+    const ceilingText = ceilings.get(street);
+    if (ceilingText) {
+      const capped = intersectCombos(fullEntry, parseRangeCombos(ceilingText, deadCards));
+      if (capped.length) entry = capped;
+    }
+    const groups = entry === fullEntry ? fullGroups : groupRangeByBoard(entry, board);
+    const ceilingDropped = entry === fullEntry
+      ? []
+      : splitGroupsByRange(fullGroups, entry).dropped.map((group) => ({ ...group, why: "Already ruled out earlier on this street, before villain's later actions." }));
+    const villainActions = formatActionRows(spot.allStreetActions?.[street]);
+    const line = villainLine(spot.allStreetActions?.[street], spot.villainPosition);
+    const heroFirst = street === spot.street && spot.freezeToPriorStreetRange;
+    let summary;
+    let kept;
+
+    if (locks.has(street)) {
+      // A locked street keeps both its range and the reasons given when it was decided (stored with the lock).
+      const lock = locks.get(street);
+      const split = splitGroupsByRange(fullGroups, parseRangeCombos(lock.rangeText, deadCards));
+      kept = split.kept;
+      const stored = Array.isArray(lock.narrowing?.keptGroups) ? lock.narrowing : null;
+      if (!stored) caveats.push(`${street}: this range was carried over from an earlier analysis that recorded no per-group reasons.`);
+      summary = {
+        street,
+        reasoning: lock.reasoning || "Range established by an earlier analysis of this hand.",
+        rangeText: lock.rangeText,
+        narrowing: stored || {
+          actionsOnStreet: villainActions,
+          ...narrowingLists(split, deadCards, { showWhy: false }),
+          keptSummary: codeListSummary(split.kept, "Kept"),
+          removedSummary: codeListSummary(split.dropped, "Removed"),
+        },
+      };
+    } else if (!groups.length || heroFirst || line === "check-first") {
+      // Nothing to decide: no villain action yet, or villain only checked first to act, which nearly the whole
+      // range does. The range carries over; only combos that share a card with the new board drop out.
+      kept = groups;
+      const checkedFirst = !heroFirst && line === "check-first";
+      summary = {
+        street,
+        reasoning: !groups.length
+          ? "No combos entered this street."
+          : checkedFirst
+            ? "Villain checked first on this street. Out of position nearly every hand checks here, so the check rules out almost nothing and the prior-street range carries over, minus combos blocked by the new card."
+            : "No villain action has occurred on this street before Hero's decision; the prior-street range is retained subject only to known-card removal.",
+        rangeText: rangeTextFromCombos(entry, deadCards),
+        narrowing: {
+          actionsOnStreet: checkedFirst ? villainActions : "No villain action yet on this street.",
+          ...narrowingLists({ kept: groups, dropped: ceilingDropped }, deadCards),
+          keptSummary: !groups.length
+            ? ""
+            : checkedFirst
+              ? "Villain checked first, which nearly the whole range does out of position, so every hand from the previous street stays in the range."
+              : "Villain has not acted on this street yet, so the whole range carries over.",
+          removedSummary: codeListSummary(ceilingDropped, "Already ruled out earlier on this street:"),
+        },
+      };
+    } else {
+      const prompt = buildRangeGroupDecisionPrompt({ spot, street, board, heroCards, groups, deadCards, entryCombos: entry.length, selectedSkills });
+      prompts.push({ street, prompt });
+      const response = await callProvider({
+        config: groupConfig,
+        systemInstruction: RANGE_GROUP_SYSTEM_INSTRUCTION,
+        prompt,
+        temperature: 0.12,
+        maxTokens: RANGE_INTERPRETER_MAX_TOKENS,
+        timeoutMs: 45000,
+        signal,
+        validate: (candidate) => validateRangeGroupDecisions(candidate, groups.map((group) => group.id)),
+      });
+      lastResponse = response;
+      modelFailures.push(...(response.modelFailures || []));
+      let answer = extractJson(response.text);
+      // Guardrails: one retry with the specific errors, then code enforces the rule itself.
+      const issuesFor = (candidate) => {
+        const split = applyGroupDecisions(groups, candidate.decisions);
+        return [
+          ...checkGroupDecisions(groups, candidate.decisions, line),
+          ...checkListSummary(candidate.keptSummary, split.kept, split.dropped, "kept").map((message) => ({ group: null, fix: null, summary: "kept", message })),
+          ...checkListSummary(candidate.removedSummary, split.dropped, split.kept, "removed").map((message) => ({ group: null, fix: null, summary: "removed", message })),
+        ];
+      };
+      let violations = issuesFor(answer);
+      const guardrail = { street, line, firstViolations: violations.map((item) => item.message), retried: false, finalViolations: [] };
+      if (violations.length) {
+        guardrail.retried = true;
+        try {
+          const retry = await callProvider({
+            config: groupConfig,
+            systemInstruction: RANGE_GROUP_SYSTEM_INSTRUCTION,
+            prompt: `${prompt}\n\nYour previous answer:\n${JSON.stringify(answer)}\n\nIt broke these rules; fix exactly these and return the full corrected JSON:\n${violations.map((item) => `- ${item.message}`).join("\n")}`,
+            temperature: 0.12,
+            maxTokens: RANGE_INTERPRETER_MAX_TOKENS,
+            timeoutMs: 45000,
+            signal,
+            validate: (candidate) => validateRangeGroupDecisions(candidate, groups.map((group) => group.id)),
+          });
+          const retried = extractJson(retry.text);
+          const retriedViolations = issuesFor(retried);
+          if (retriedViolations.length < violations.length) {
+            answer = retried;
+            violations = retriedViolations;
+            lastResponse = retry;
+          }
+          modelFailures.push(...(retry.modelFailures || []));
+        } catch (error) {
+          if (signal?.aborted) throw error;
+        }
+      }
+      const forced = violations.filter((item) => item.fix);
+      if (violations.length) {
+        guardrail.finalViolations = violations.map((item) => item.message);
+        answer = { ...answer, decisions: applyGuardrailFixes(answer.decisions, violations.filter((item) => item.group)) };
+        if (forced.length) caveats.push(`${street}: ${forced.length} decision${forced.length === 1 ? "" : "s"} corrected by poker-logic rules after the model's retry.`);
+      }
+      guardrails.push(guardrail);
+      const decisions = applyGroupDecisions(groups, answer.decisions);
+      if (decisions.undecided.length) {
+        caveats.push(`${street}: no decision for ${decisions.undecided.map((group) => group.label).join(", ")}; kept by default.`);
+      }
+      const floorText = floors.get(street);
+      const decided = keepFloorCombos(decisions, floorText ? parseRangeCombos(floorText, deadCards) : []);
+      kept = decided.kept;
+      finalAnswer = answer;
+      // The model's summaries stand unless a rule flipped a decision under them or they name the wrong list.
+      const summaryOk = (which) => !forced.length && !violations.some((item) => item.summary === which) && String(answer[`${which}Summary`] || "").trim();
+      summary = {
+        street,
+        reasoning: String(answer.reasoning || ""),
+        rangeText: rangeTextFromCombos(kept.flatMap((group) => group.combos), deadCards),
+        narrowing: {
+          actionsOnStreet: String(answer.actionsOnStreet || villainActions),
+          ...narrowingLists({ kept: decided.kept, dropped: [...ceilingDropped, ...decided.dropped] }, deadCards),
+          keptSummary: summaryOk("kept") ? String(answer.keptSummary).trim() : codeListSummary(decided.kept, "Kept"),
+          removedSummary: [
+            summaryOk("removed") ? String(answer.removedSummary).trim() : codeListSummary(decided.dropped, "Removed"),
+            codeListSummary(ceilingDropped, "Already ruled out earlier on this street, before villain's later actions:"),
+          ].filter(Boolean).join(" "),
+          notTaken: String(answer.notTaken || ""),
+          sizingRead: String(answer.sizingRead || ""),
+        },
+      };
+    }
+    summaries.push(summary);
+    previousText = summary.rangeText;
+    finalKept = kept;
+    finalDeadCards = deadCards;
+  }
+
+  const finalSummary = summaries[summaries.length - 1];
+  const rangeInterpretation = {
+    street: spot.street,
+    rangeText: finalSummary.rangeText,
+    summary: String(finalAnswer?.summary || finalSummary.reasoning || ""),
+    confidence: finalAnswer?.confidence || "medium",
+    streetSummaries: summaries,
+    weightedGroups: weightedGroupsFromKept(finalKept, finalDeadCards),
+    keyDrivers: Array.isArray(finalAnswer?.keyDrivers) ? finalAnswer.keyDrivers : [],
+    caveats: [...(preflopResult?.rangeInterpretation?.caveats || []), ...(Array.isArray(finalAnswer?.caveats) ? finalAnswer.caveats : []), ...caveats],
+  };
+
+  return {
+    rangeInterpretation,
+    rangeWidth,
+    provider: lastResponse?.provider || "local",
+    model: lastResponse?.model || "range-groups",
+    attemptedModels: lastResponse?.attemptedModels || [],
+    modelFailures,
+    retrievedContext: preflopResult?.retrievedContext || { harringtonTheory: [] },
+    selectedSkills,
+    debug: {
+      endpoint: "/api/range/interpret",
+      mode: "range-group-decisions",
+      guardrails,
+      systemInstruction: RANGE_GROUP_SYSTEM_INSTRUCTION,
+      prompt: prompts.map((item) => `--- ${item.street} ---\n${item.prompt}`).join("\n\n"),
+      prompts,
+      spot,
+      math: rangeMath,
+      selectedSkills,
+    },
+  };
+}
+
 const RANGE_WIDTH_RETRIES = 2;
+const RANGE_INTERPRETER_MAX_TOKENS = 8192;
 // Covers the model's own reasoning tokens too; 1500 left Nemotron and Gemini with no room for the JSON.
 const SMALL_RANGE_CALL_MAX_TOKENS = 2500;
 
@@ -1048,13 +1452,69 @@ export function applyLockedPriorStreetRanges(interpretation = {}, lockedRanges) 
   };
 }
 
-export function validateRangeInterpreterOutput(candidate) {
+// Valid JSON is not enough: an answer with no range for the street being analyzed leaves that street
+// empty in the UI (0 combos) and gives later decisions nothing to build on, so fail over instead.
+export function validateRangeInterpreterOutput(candidate, street = null) {
+  let parsed;
   try {
-    extractJson(candidate?.text);
-    return { valid: true, reasons: [] };
+    parsed = extractJson(candidate?.text);
   } catch (error) {
     return { valid: false, reasons: [`invalid range JSON: ${error.message}`] };
   }
+  if (street) {
+    const summary = (Array.isArray(parsed?.streetSummaries) ? parsed.streetSummaries : []).find((item) => item?.street === street);
+    if (!String(summary?.rangeText || parsed?.rangeText || "").trim()) {
+      return { valid: false, reasons: [`range JSON has no rangeText for the ${street}`] };
+    }
+  }
+  return { valid: true, reasons: [] };
+}
+
+const SIX_MAX_POSITION_ALIASES = { HJ: "MP", LJ: "MP", UTG1: "MP", "UTG+1": "MP" };
+
+// CoinPoker labels the seat after UTG "UTG+1", which the vision model sometimes returns as null (or
+// verbatim). Normalize the aliases, then place a single unlabeled player from the preflop action order:
+// the seat must lie strictly between the nearest labeled actors before and after it, and the first free
+// position there is the one CoinPoker calls UTG+1 (MP). Short-handed tables leave gaps, so "the only
+// unused position" is not enough on its own. Action rows for the same player pick the position up too,
+// so a null hero position can't block every decision in the hand.
+const PREFLOP_ORDER = ["UTG", "MP", "CO", "BTN", "SB", "BB"];
+
+function inferMissingPosition(hand, players, name) {
+  const used = new Set(players.map((player) => player.position).filter(Boolean));
+  const positionOf = (action) => action.position || players.find((player) => player.name === action.actor)?.position || null;
+  const rows = (hand.streets?.preflop?.actions || []).filter((action) => !["blind", "ante"].includes(String(action.action || "").toLowerCase()));
+  const index = rows.findIndex((action) => action.actor === name);
+  const free = PREFLOP_ORDER.filter((position) => !used.has(position));
+  if (index < 0) return free.length === 1 ? free[0] : null;
+  const before = rows.slice(0, index).reverse().map(positionOf).find(Boolean);
+  const after = rows.slice(index + 1).map(positionOf).find((position) => position && position !== before);
+  const from = before ? PREFLOP_ORDER.indexOf(before) + 1 : 0;
+  const to = after ? PREFLOP_ORDER.indexOf(after) : PREFLOP_ORDER.length;
+  const between = PREFLOP_ORDER.slice(from, to > from ? to : PREFLOP_ORDER.length).filter((position) => !used.has(position));
+  return between[0] || (free.length === 1 ? free[0] : null);
+}
+
+export function fillSixMaxPositions(hand = {}) {
+  const alias = (position) => {
+    if (!position) return null;
+    const upper = String(position).toUpperCase().replace(/\s+/g, "");
+    return SIX_MAX_POSITION_ALIASES[upper] || upper;
+  };
+  const players = (hand.players || []).map((player) => ({ ...player, position: alias(player.position) }));
+  const unpositioned = players.filter((player) => !player.position);
+  if (unpositioned.length === 1) unpositioned[0].position = inferMissingPosition(hand, players, unpositioned[0].name);
+  const positionByName = new Map(players.filter((player) => player.name && player.position).map((player) => [player.name, player.position]));
+  const streets = Object.fromEntries(
+    Object.entries(hand.streets || {}).map(([street, data]) => [
+      street,
+      {
+        ...data,
+        actions: (data?.actions || []).map((action) => ({ ...action, position: alias(action.position) || positionByName.get(action.actor) || null })),
+      },
+    ]),
+  );
+  return { ...hand, players, streets };
 }
 
 const HAND_IMPORT_SYSTEM_INSTRUCTION = `You extract no-limit hold'em hand histories from CoinPoker and Natural8 style screenshots.
@@ -1063,7 +1523,7 @@ Prefer exact visible text over inference. When something is unclear, use null an
 Normalize card ranks to A,K,Q,J,T,9-2 and suits to c,d,h,s. Normalize actions to one of blind, ante, fold, check, bet, call, raise, allin.
 Use allin only when the screenshot explicitly says ALLIN, all-in, shove, jam, or clearly shows a player committed their entire remaining stack. Normal matching bets are call, not allin.
 Do not include RETURN, refund, uncalled bet returned, muck, win, collect, or pot-award rows as player actions.
-Use positions as UTG, MP, CO, BTN, SB, BB where visible. For six-max screenshots that use HJ, convert it to MP.
+Use positions as UTG, MP, CO, BTN, SB, BB where visible. For six-max screenshots, the seat labeled HJ, LJ, UTG+1 or UTG1 is MP: return MP, never null. Every seated player has a position badge in the history panel; read it for the hero too.
 The hero is always the bottom seat in these CoinPoker/Natural8 screenshots. The heroHand must be the two cards at the bottom seat, not the exposed winning/showdown cards at another seat.
 Pay special attention to bottom-seat suits and ranks. Do not infer a pocket pair unless both bottom cards visibly have the same rank. A jack has a J face/rank marker and must not be read as 7.
 Use card color as evidence: red suits are hearts or diamonds, black suits are clubs or spades. A red K with a heart pip is Kh, never Ks. A red K with a diamond pip is Kd, never Kh.
@@ -1160,8 +1620,11 @@ Each named row uses the name and position printed on its own row. Yellow bubbles
 Exclude RETURN, refund, muck, winnings, and pot-award rows. Set each action's "bubble" to "yellow" (Hero's unnamed bubbles), "white" (named players) or "blue" (RETURN), and list every bubble separately in column order without merging or dropping any. Return JSON only.`;
 }
 
-async function focusedHeroHandVerification({ imageBase64, mimeType, hand, config, actionIssues = [] }) {
-  if (!shouldVerifyHeroHandWithFocusedVision(hand, { actionIssues })) return null;
+async function focusedHeroHandVerification({ imageBase64, mimeType, hand, config }) {
+  // Always re-read the hole cards from a crop of the bottom seat. The broad read gets a hero suit wrong
+  // often enough (3 of 11 test screenshots: 7h->7d, Jh->Js, Ah->As) and nothing in the read itself says
+  // so, while a wrong hole card silently skews every equity and blocker downstream.
+  if (!Array.isArray(hand.heroHand) || hand.heroHand.length !== 2) return null;
   const prompt = buildFocusedHeroHandPrompt();
   const failures = [];
   let response;
@@ -1322,16 +1785,19 @@ const BOARD_CARD = /^(10|[2-9TJQKA])([cdhs])$/i;
 
 // A crop read may only change suits: it must show the same ranks in the same order as the full-screenshot read.
 export function applyFocusedBoardVerification(hand, focused) {
-  const current = [...(hand.board?.flop || []), hand.board?.turn, hand.board?.river].filter(Boolean);
-  const read = (Array.isArray(focused?.board) ? focused.board : []).map((token) => {
-    const m = String(token).trim().match(BOARD_CARD);
+  const normalize = (token) => {
+    const m = cardText(token).match(BOARD_CARD);
     return m ? `${m[1] === "10" ? "T" : m[1].toUpperCase()}${m[2].toLowerCase()}` : null;
-  });
+  };
+  // Normalize the broad read too: it may still spell tens "10s", which compared by first character
+  // ("1" vs "T") rejected a correct crop read as a rank mismatch.
+  const current = [...(hand.board?.flop || []), hand.board?.turn, hand.board?.river].filter(Boolean).map((token) => normalize(token) || String(token));
+  const read = (Array.isArray(focused?.board) ? focused.board : []).map(normalize);
   const decision = { applied: false, changes: [] };
   if (read.length !== current.length || read.includes(null) || new Set(read).size !== read.length) {
     return { hand, decision: { ...decision, reason: "unusable-crop-read" } };
   }
-  if (read.some((c, i) => c[0] !== String(current[i])[0].toUpperCase())) {
+  if (read.some((c, i) => c[0] !== current[i][0].toUpperCase())) {
     return { hand, decision: { ...decision, reason: "rank-mismatch" } };
   }
   const hero = new Set((hand.heroHand || []).map((c) => String(c)));
@@ -1562,7 +2028,7 @@ Rules:
     throw error;
   }
 
-  hand = stripNonDecisionActions(attributeYellowBubblesToHero(repairImportedHeroHandFromNotes(hand)));
+  hand = normalizeNonRaises(stripNonDecisionActions(attributeYellowBubblesToHero(repairImportedHeroHandFromNotes(fillSixMaxPositions(hand)))));
   const initialActionConsistency = validateImportedActionConsistency(hand);
   if (!initialActionConsistency.safe) {
     focusedActionRepairCheck = await focusedActionRepairVerification({ imageBase64, mimeType, config });
@@ -1577,7 +2043,6 @@ Rules:
     mimeType,
     hand,
     config,
-    actionIssues: initialActionConsistency.issues,
   });
   if (focusedHeroHandCheck?.focused) {
     hand = applyFocusedHeroHandVerification(hand, focusedHeroHandCheck.focused);

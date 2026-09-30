@@ -18,7 +18,7 @@
     if (!card) return `<span class="${className} card-back" aria-hidden="true"></span>`;
     const [rank, suit] = card;
     const red = suit === "h" || suit === "d";
-    return `<span class="${className}${red ? " is-red" : ""}" aria-label="${RANK_NAMES[rank] || rank} of ${SUIT_NAMES[suit]}"><b>${rank === "T" ? "10" : rank}</b><i>${SUIT_SYMBOLS[suit]}</i></span>`;
+    return `<span class="${className} suit-${suit}${red ? " is-red" : ""}" aria-label="${RANK_NAMES[rank] || rank} of ${SUIT_NAMES[suit]}"><b>${rank === "T" ? "10" : rank}</b><i>${SUIT_SYMBOLS[suit]}</i></span>`;
   }
 
   function updateCardSelection(selectedCards, card) {
@@ -51,9 +51,11 @@
     return `
       <button class="poker-seat seat-${position.toLowerCase()}${isHero ? " is-hero" : ""}${state.currentActor === position ? " is-current" : ""}${seat.folded ? " is-folded" : ""}" type="button" data-seat="${position}" aria-pressed="${isHero}">
         <span class="seat-cards">${cards}</span>
-        <strong>${isHero ? "Hero" : position}${isHero ? ` <small>(${position})</small>` : ""}</strong>
-        <span>${state.settings.startingStackBb} bb</span>
+        <span class="seat-avatar" aria-hidden="true">${position}</span>
+        <span class="seat-plate"><strong>${isHero ? "Hero" : position}${isHero ? ` <small>(${position})</small>` : ""}</strong>
+        <span class="seat-stack">${state.settings.startingStackBb} bb</span></span>
         ${isHero ? '<span class="hero-star" aria-label="Hero seat">★</span>' : ""}
+        ${position === "BTN" ? '<span class="dealer-button" aria-label="Dealer button">D</span>' : ""}
       </button>`;
   }
 

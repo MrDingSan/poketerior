@@ -16,6 +16,7 @@ function normalizedPosition(value) {
 }
 
 const PREFLOP_SEAT_RANK = { UTG: 0, MP: 1, HJ: 1, CO: 2, BTN: 3, SB: 4, BB: 5 };
+const POSTFLOP_SEAT_RANK = { SB: 0, BB: 1, UTG: 2, MP: 3, HJ: 3, CO: 4, BTN: 5 };
 
 export function stripNonDecisionActions(hand = {}) {
   const streets = {};
@@ -23,6 +24,31 @@ export function stripNonDecisionActions(hand = {}) {
     streets[street] = {
       ...data,
       actions: (data?.actions || []).filter((action) => !NON_DECISION_ACTIONS.has(actionName(action?.action))),
+    };
+  }
+  return { ...hand, streets };
+}
+
+// A "raise" that doesn't exceed the wager already in front (e.g. UTG "Raise 1 BB" into the 1 BB big
+// blind) is a call - a limp preflop. Read as a raise it fails the minimum-raise rule and blocks every
+// decision in the hand. Amounts are street totals in big blinds.
+export function normalizeNonRaises(hand = {}) {
+  const streets = {};
+  for (const [street, data] of Object.entries(hand.streets || {})) {
+    let highest = 0;
+    streets[street] = {
+      ...data,
+      actions: (data?.actions || []).map((action) => {
+        const name = actionName(action?.action);
+        const amount = Number(action?.amountBb);
+        if (FORCED_BET_ACTIONS.has(name)) {
+          if (Number.isFinite(amount)) highest = Math.max(highest, amount);
+          return action;
+        }
+        if (name === "raise" && Number.isFinite(amount) && amount <= highest) return { ...action, action: "call" };
+        if (["bet", "raise", "allin"].includes(name) && Number.isFinite(amount)) highest = Math.max(highest, amount);
+        return action;
+      }),
     };
   }
   return { ...hand, streets };
@@ -55,6 +81,18 @@ export function validateImportedActionConsistency(hand = {}) {
       }
 
       const previous = actions[index - 1];
+      // Nobody acts twice in a row on a street (blinds are posted, not acted).
+      if (previous && identity(previous.actor) === actor && actor &&
+          !FORCED_BET_ACTIONS.has(actionName(previous.action)) && !FORCED_BET_ACTIONS.has(actionName(action.action)) &&
+          !(AGGRESSIVE_ACTIONS.has(actionName(previous.action)) && RESPONSE_ACTIONS.has(actionName(action.action)))) {
+        requiresDistinctActors = true;
+        issues.push({
+          code: "REPEATED_ACTOR",
+          street,
+          actor: action.actor,
+          message: `${action.actor} cannot act twice in a row (${previous.action}, then ${action.action}).`,
+        });
+      }
       if (previous && identity(previous.actor) === actor && actor &&
           AGGRESSIVE_ACTIONS.has(actionName(previous.action)) &&
           RESPONSE_ACTIONS.has(actionName(action.action))) {
@@ -66,6 +104,30 @@ export function validateImportedActionConsistency(hand = {}) {
           message: `${action.actor} cannot make both ${previous.action} and the following ${action.action}.`,
         });
       }
+    }
+  }
+
+  // Postflop, the first orbit of each street goes SB, BB, UTG, MP, CO, BTN among players still in.
+  for (const street of ["flop", "turn", "river"]) {
+    const seen = new Set();
+    let lastRank = -1;
+    for (const action of hand.streets?.[street]?.actions || []) {
+      const actor = identity(action?.actor);
+      if (!actor) continue;
+      if (seen.has(actor)) break;
+      seen.add(actor);
+      const rank = POSTFLOP_SEAT_RANK[normalizedPosition(action.position) || playerPositions.get(actor)];
+      if (rank === undefined) continue;
+      if (rank < lastRank) {
+        issues.push({
+          code: "POSTFLOP_ORDER_VIOLATION",
+          street,
+          actor: action.actor,
+          message: `${action.actor} acts out of turn on the ${street}.`,
+        });
+        break;
+      }
+      lastRank = rank;
     }
   }
 

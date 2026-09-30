@@ -1,0 +1,384 @@
+/* Poker table skin, shared by the pre-flop builder (.poker-table), the post-flop builder (.postflop-table), and the
+   screenshot-import replay (.poker-table.import-builder-table).
+
+   Loaded last so it wins over the layered table rules in styles.css and poketerior-dashboard.css. The table reads
+   like a real client: dark room, padded rail with a thin trim, lit felt, avatar seats with nameplates, chip bets,
+   a dealer button, and white four-color cards. All three tables share one seat layout, so seats stay put when the
+   hand moves from pre-flop to the flop. */
+
+:root {
+  --pt-room: #080c0a;
+  --pt-rail-top: #3a403e;
+  --pt-rail-mid: #1b201e;
+  --pt-rail-low: #0b0e0d;
+  --pt-trim: rgba(214, 177, 93, 0.55);
+  --pt-felt-hi: #1d8a5c;
+  --pt-felt: #12683f;
+  --pt-felt-lo: #0a4a2e;
+  --pt-felt-edge: #073823;
+  --pt-plate: #0c110f;
+  --pt-plate-line: rgba(255, 255, 255, 0.12);
+  --pt-stack: #7fe0b0;
+  --pt-hero: #d6b15d;
+  --pt-acting: var(--seat-acting, #ffc65c);
+  --pt-spade: #16191b;
+  --pt-heart: #d42a36;
+  --pt-diamond: #1f63d6;
+  --pt-club: #178a3c;
+  --pt-back: #8a1c2b;
+  --pt-back-dark: #5f111d;
+}
+
+/* ---------- Room, rail, and felt ---------- */
+
+:is(.poker-table, .postflop-table) {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md, 12px);
+  background: radial-gradient(ellipse at 50% 45%, #15201b 0%, #0a100d 58%, var(--pt-room) 100%);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.55);
+}
+
+/* Rail (border box) wrapped around the felt (padding box); the inset hairline is the trim where they meet. */
+:is(.poker-table, .postflop-table)::before {
+  content: "";
+  position: absolute;
+  inset: 30px 58px;
+  z-index: 0;
+  border: 14px solid transparent;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 50% 40%, var(--pt-felt-hi) 0%, var(--pt-felt) 45%, var(--pt-felt-lo) 78%, var(--pt-felt-edge) 100%) padding-box,
+    linear-gradient(180deg, var(--pt-rail-top) 0%, var(--pt-rail-mid) 42%, var(--pt-rail-low) 100%) border-box;
+  box-shadow:
+    inset 0 0 0 1.5px var(--pt-trim),
+    inset 0 0 60px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 18px 36px rgba(0, 0, 0, 0.6);
+}
+
+/* Betting line inside the felt. */
+:is(.poker-table, .postflop-table)::after {
+  content: "";
+  position: absolute;
+  inset: 68px 112px;
+  z-index: 0;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Pre-flop centerpiece: brand watermark plus the pot. */
+.poker-table .felt-brand { opacity: 1; z-index: 1; top: 44%; gap: 2px; }
+.poker-table .felt-brand strong { color: rgba(255, 255, 255, 0.09); font-size: 1.1rem; font-weight: 700; letter-spacing: 0.32em; text-transform: uppercase; }
+.poker-table .felt-brand small { color: rgba(255, 255, 255, 0.07); font-size: 0.5rem; letter-spacing: 0.24em; }
+
+.poker-table .table-pot,
+:is(.postflop-table, .import-builder-table) .postflop-pot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px 4px 5px;
+  color: rgba(236, 246, 240, 0.85);
+  background: rgba(0, 0, 0, 0.42);
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: 0;
+}
+.poker-table .table-pot { margin-top: 12px; color: #fff; font-weight: 700; }
+:is(.postflop-table, .import-builder-table) .postflop-pot strong { color: #fff; font-weight: 700; }
+.poker-table .table-pot::before,
+:is(.postflop-table, .import-builder-table) .postflop-pot::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #2f7de1 0 40%, transparent 41%),
+    repeating-conic-gradient(#f4f4f4 0 15deg, #2f7de1 15deg 45deg);
+  box-shadow: 0 1px 0 #1b4f95, 0 2px 0 #2f7de1, 0 3px 3px rgba(0, 0, 0, 0.5);
+}
+
+:is(.postflop-table, .import-builder-table) .postflop-pot { top: 31%; }
+:is(.postflop-table, .import-builder-table) .board-card-slots { top: 45%; gap: 6px; }
+
+/* ---------- Cards ---------- */
+
+:is(.poker-table, .postflop-table) :is(.board-card, .mini-card:not(.card-back)) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--pt-spade);
+  background: linear-gradient(180deg, #ffffff 0%, #f1f1ec 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1), 0 3px 8px rgba(0, 0, 0, 0.45);
+  line-height: 1;
+}
+:is(.poker-table, .postflop-table) :is(.board-card, .mini-card) b { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; }
+:is(.poker-table, .postflop-table) :is(.board-card, .mini-card) i { font-size: 1.05rem; font-style: normal; }
+
+/* Four-color deck. */
+:is(.poker-table, .postflop-table) :is(.board-card.board-card--s, .mini-card.suit-s) { color: var(--pt-spade); }
+:is(.poker-table, .postflop-table) :is(.board-card.board-card--h, .mini-card.suit-h) { color: var(--pt-heart); }
+:is(.poker-table, .postflop-table) :is(.board-card.board-card--d, .mini-card.suit-d) { color: var(--pt-diamond); }
+:is(.poker-table, .postflop-table) :is(.board-card.board-card--c, .mini-card.suit-c) { color: var(--pt-club); }
+
+:is(.postflop-table, .import-builder-table) :is(.board-card, .board-card-slot) { width: 46px; height: 64px; }
+:is(.postflop-table, .import-builder-table) .board-card-slot {
+  border: 1.5px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.14);
+}
+:is(.postflop-table, .import-builder-table) .board-card-slot:not(:disabled):not(.is-future) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(32, 201, 151, 0.08);
+}
+/* A dealt card sits in a disabled slot button; the global disabled fade would wash it out. */
+.postflop-table .board-card-slot.has-card { border: 0; background: transparent; opacity: 1; cursor: default; }
+.postflop-table .board-card-slot.has-card > span:empty { display: none; }
+
+/* Face-down cards for live opponents. */
+:is(.poker-table, .postflop-table) :is(.seat-card-backs i, .mini-card.card-back) {
+  display: block;
+  width: 22px;
+  height: 31px;
+  border: 1.5px solid #f3eee4;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(45deg, var(--pt-back) 0 3px, var(--pt-back-dark) 3px 6px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.seat-card-backs,
+.poker-table .poker-seat:not(.is-hero) .seat-cards { display: flex; gap: 0; }
+:is(.seat-card-backs i, .poker-seat:not(.is-hero) .seat-cards .mini-card):first-child { transform: rotate(-7deg) translateX(3px); }
+:is(.seat-card-backs i, .poker-seat:not(.is-hero) .seat-cards .mini-card):last-child { transform: rotate(7deg) translateX(-3px); }
+
+/* Hero's hole cards: larger and slightly fanned. */
+.poker-table .poker-seat.is-hero .seat-cards,
+:is(.postflop-table, .import-builder-table) :is(.hero-hole-cards, .import-seat-cards) { display: flex; gap: 0; min-height: 0; }
+.poker-table .poker-seat.is-hero .seat-cards .mini-card,
+:is(.postflop-table, .import-builder-table) :is(.hero-hole-cards, .import-seat-cards) .board-card { width: 44px; height: 62px; }
+.poker-table .poker-seat.is-hero .seat-cards > :first-child,
+:is(.postflop-table, .import-builder-table) :is(.hero-hole-cards, .import-seat-cards) > :first-child { transform: rotate(-5deg) translateX(3px); }
+.poker-table .poker-seat.is-hero .seat-cards > :last-child,
+:is(.postflop-table, .import-builder-table) :is(.hero-hole-cards, .import-seat-cards) > :last-child { transform: rotate(5deg) translateX(-3px); }
+.poker-table .poker-seat.is-hero .seat-cards .mini-card.card-back { width: 44px; height: 62px; border-width: 2px; border-radius: 5px; }
+
+/* ---------- Seats: cards over an avatar over a nameplate ---------- */
+
+:is(.poker-table, .postflop-table) :is(.poker-seat, .postflop-seat) {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: auto;
+  min-width: 104px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--text);
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  transform: translate(-50%, -50%);
+}
+.poker-table .poker-seat { cursor: pointer; }
+.poker-table .poker-seat:hover { transform: translate(-50%, -50%); }
+.poker-table .poker-seat:hover .seat-plate { border-color: rgba(32, 201, 151, 0.55); }
+
+:is(.poker-table, .postflop-table) :is(.seat-cards, .seat-card-backs, .hero-hole-cards, .import-seat-cards) {
+  position: relative;
+  top: auto;
+  z-index: 0;
+  margin-bottom: -12px;
+}
+:is(.poker-table, .postflop-table) :is(.poker-seat.is-hero .seat-cards, .hero-hole-cards, .import-seat-cards) { z-index: 1; margin-bottom: -10px; }
+
+.seat-avatar {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 2px solid #3b4843;
+  border-radius: 50%;
+  color: #a9c2b7;
+  background: radial-gradient(circle at 35% 30%, #2d3a35 0%, #141b18 70%);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.55);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+:is(.poker-seat, .postflop-seat):not(.is-folded) .seat-avatar { border-color: #5d7a6e; color: #e3efe9; }
+:is(.poker-seat, .postflop-seat).is-hero .seat-avatar { display: none; }
+
+.seat-plate {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 88px;
+  margin-top: -9px;
+  border: 1px solid var(--pt-plate-line);
+  border-radius: 9px;
+  padding: 4px 12px 5px;
+  background: linear-gradient(180deg, #151c19 0%, var(--pt-plate) 100%);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+:is(.poker-table, .postflop-table) .seat-plate strong { color: var(--text); font-size: 0.74rem; font-weight: 600; }
+:is(.poker-table, .postflop-table) .seat-plate strong small { color: var(--muted); font-size: 0.64rem; font-weight: 500; }
+:is(.poker-seat, .postflop-seat):not(.is-hero) .seat-plate strong small { display: none; }
+:is(.poker-table, .postflop-table) .seat-stack { color: var(--pt-stack); font-size: 0.74rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Hero: gold nameplate, no avatar, star before the name. */
+:is(.poker-seat, .postflop-seat).is-hero .seat-plate { min-width: 104px; border: 1.5px solid var(--pt-hero); }
+:is(.poker-table .poker-seat, .import-builder-table .postflop-seat).is-hero .seat-plate strong::before { content: "★ "; color: var(--pt-hero); }
+.poker-table .poker-seat .hero-star { display: none; }
+
+/* Folded: dim the whole seat and pull the face-down cards. */
+:is(.poker-table, .postflop-table) :is(.poker-seat, .postflop-seat).is-folded:not(.is-hero) {
+  opacity: 0.4;
+  filter: grayscale(0.85);
+}
+.poker-table .poker-seat.is-folded:not(.is-hero) .seat-cards { visibility: hidden; }
+
+/* Acting: the ring and glow move from the old seat box to the avatar and nameplate. */
+:is(.poker-table, .postflop-table) :is(.poker-seat, .postflop-seat):is(.is-current, .is-acting):not(.is-folded) {
+  border: 0 !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+:is(.poker-seat, .postflop-seat):is(.is-current, .is-acting):not(.is-folded) .seat-avatar {
+  border-color: var(--pt-acting);
+  animation: pt-acting-pulse 1.6s ease-in-out infinite;
+}
+:is(.poker-seat, .postflop-seat):is(.is-current, .is-acting):not(.is-folded) .seat-plate { border-color: var(--pt-acting); }
+:is(.poker-seat, .postflop-seat).is-hero:is(.is-current, .is-acting):not(.is-folded) .seat-plate { animation: pt-acting-pulse 1.6s ease-in-out infinite; }
+
+@keyframes pt-acting-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 198, 92, 0.18), 0 0 14px rgba(255, 198, 92, 0.35), 0 4px 10px rgba(0, 0, 0, 0.5); }
+  50% { box-shadow: 0 0 0 5px rgba(255, 198, 92, 0.06), 0 0 24px rgba(255, 198, 92, 0.6), 0 4px 10px rgba(0, 0, 0, 0.5); }
+}
+
+/* Dealer button. */
+.dealer-button {
+  position: absolute;
+  z-index: 3;
+  right: -20px;
+  bottom: 30px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid #bdb294;
+  border-radius: 50%;
+  color: #1b1b1b;
+  background: radial-gradient(circle at 40% 35%, #ffffff 0%, #e6dfcc 100%);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.55);
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* ---------- Seat layout (same for every table) ---------- */
+
+:is(.poker-table, .postflop-table) :is(.seat-utg, .postflop-seat--utg) { top: 16%; left: 50%; }
+:is(.poker-table, .postflop-table) :is(.seat-hj, .postflop-seat--hj) { top: 28%; left: 85%; }
+:is(.poker-table, .postflop-table) :is(.seat-co, .postflop-seat--co) { top: 70%; left: 88%; }
+:is(.poker-table, .postflop-table) :is(.seat-btn, .postflop-seat--btn) { top: 84%; left: 50%; }
+:is(.poker-table, .postflop-table) :is(.seat-sb, .postflop-seat--sb) { top: 70%; left: 12%; }
+:is(.poker-table, .postflop-table) :is(.seat-bb, .postflop-seat--bb) { top: 28%; left: 15%; }
+
+/* ---------- Bets: a chip and the amount, pushed in front of the seat ---------- */
+
+:is(.poker-table .table-commitment, .postflop-table .felt-commitment) {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 999px;
+  padding: 2px 9px 2px 3px;
+  color: #f3f6f4;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+:is(.poker-table .table-commitment, .postflop-table .felt-commitment) i {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: transparent;
+  background:
+    radial-gradient(circle, #d23a3a 0 40%, transparent 41%),
+    repeating-conic-gradient(#f4f4f4 0 15deg, #d23a3a 15deg 45deg);
+  box-shadow: 0 1px 0 #7a1a1a, 0 2px 0 #d23a3a, 0 3px 3px rgba(0, 0, 0, 0.5);
+  font-size: 0;
+  text-shadow: none;
+}
+
+/* Pre-flop bets are placed on the table. */
+.poker-table .table-commitment { right: auto; bottom: auto; transform: translate(-50%, -50%); }
+.poker-table .commitment-utg { top: 31%; left: 50%; }
+.poker-table .commitment-hj { top: 38%; left: 72%; }
+.poker-table .commitment-co { top: 60%; left: 74%; }
+.poker-table .commitment-btn { top: 64%; left: 50%; }
+.poker-table .commitment-sb { top: 60%; left: 26%; }
+.poker-table .commitment-bb { top: 38%; left: 28%; }
+
+/* Post-flop bets hang off the seat, on the side facing the pot. */
+.postflop-table .felt-commitment { top: auto; right: auto; bottom: auto; left: auto; }
+.postflop-table .postflop-seat--utg .felt-commitment { top: calc(100% + 8px); left: 50%; transform: translateX(-50%); }
+.postflop-table .postflop-seat--hj .felt-commitment { top: calc(100% + 4px); right: 62%; }
+.postflop-table .postflop-seat--bb .felt-commitment { top: calc(100% + 4px); left: 62%; }
+.postflop-table .postflop-seat--co .felt-commitment { bottom: calc(100% + 4px); right: 62%; }
+.postflop-table .postflop-seat--sb .felt-commitment { bottom: calc(100% + 4px); left: 62%; }
+.postflop-table .postflop-seat--btn .felt-commitment { bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); }
+
+/* ---------- Narrow tables ---------- */
+
+@media (max-width: 700px) {
+  :is(.poker-table, .postflop-table)::before { inset: 20px 26px; border-width: 10px; }
+  :is(.poker-table, .postflop-table)::after { inset: 44px 60px; }
+  :is(.poker-table, .postflop-table) :is(.poker-seat, .postflop-seat) { min-width: 76px; }
+  .seat-avatar { width: 30px; height: 30px; font-size: 0.56rem; }
+  .seat-plate { min-width: 70px; padding: 3px 8px 4px; }
+  :is(.poker-seat, .postflop-seat).is-hero .seat-plate { min-width: 80px; }
+  :is(.poker-table, .postflop-table) .seat-plate strong,
+  :is(.poker-table, .postflop-table) .seat-stack { font-size: 0.66rem; }
+  :is(.postflop-table, .import-builder-table) :is(.board-card, .board-card-slot) { width: 34px; height: 48px; }
+  :is(.poker-table, .postflop-table) :is(.board-card, .mini-card) b { font-size: 1rem; }
+  :is(.poker-table, .postflop-table) :is(.board-card, .mini-card) i { font-size: 0.85rem; }
+  .poker-table .poker-seat.is-hero .seat-cards .mini-card,
+  :is(.postflop-table, .import-builder-table) :is(.hero-hole-cards, .import-seat-cards) .board-card { width: 34px; height: 48px; }
+  :is(.poker-table, .postflop-table) :is(.seat-card-backs i, .mini-card.card-back) { width: 17px; height: 24px; }
+  /* Beside the seat, not under it, so the bet stays clear of the board. */
+  .postflop-table .postflop-seat--bb .felt-commitment { top: 2px; left: calc(100% - 14px); }
+  .postflop-table .postflop-seat--hj .felt-commitment { top: 2px; right: calc(100% - 14px); }
+}

@@ -51,7 +51,13 @@
       return true;
     }
 
-    return { get, remember, forget };
+    // Drops every remembered range, in memory and in storage.
+    function clear() {
+      entries.clear();
+      persist();
+    }
+
+    return { get, remember, forget, clear };
   }
 
   return { createPreflopRangeLock, lockKey };

@@ -101,3 +101,105 @@ console.log("import action consistency tests passed");
   assert.ok(foldedActs.issues.some((issue) => issue.code === "FOLDED_PLAYER_ACTS"));
   assert.ok(!foldedActs.issues.some((issue) => issue.code === "PREFLOP_ORDER_VIOLATION"), "blind rows must not trip the order check");
 }
+
+// Hand-History-1790439008402: Hero's check came back both as an unnamed yellow bubble and as a named row.
+// Attribution must not turn that into Hero checking twice, and a real repeat must be flagged.
+{
+  const { attributeYellowBubblesToHero } = await import("../src/analysis/importRepair.js");
+  const players = [{ name: "hero", position: "BB", isHero: true }, { name: "villain", position: "CO" }];
+  const repaired = attributeYellowBubblesToHero({
+    heroName: "hero",
+    players,
+    streets: {
+      flop: {
+        actions: [
+          { actor: null, position: null, bubble: "yellow", action: "check" },
+          { actor: "hero", position: "BB", action: "check" },
+          { actor: "villain", position: "CO", action: "bet", amountBb: 2.46 },
+          { actor: "hero", position: "BB", action: "call", amountBb: 2.46 },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(repaired.streets.flop.actions.map((action) => `${action.actor}:${action.action}`), ["hero:check", "villain:bet", "hero:call"]);
+  const repeated = validateImportedActionConsistency({
+    players,
+    streets: { flop: { actions: [{ actor: "hero", action: "check" }, { actor: "hero", action: "bet", amountBb: 2 }] } },
+  });
+  assert.equal(repeated.safe, false);
+  assert.ok(repeated.issues.some((issue) => issue.code === "REPEATED_ACTOR"));
+  console.log("repeated-action import checks passed");
+}
+
+// Hand-History-1790438742868: the model invented a yellow "Check" at the top of every postflop street
+// for Hero (UTG), which would put Hero ahead of the BB. The bubble is dropped; a real out-of-turn row
+// is flagged so the focused action repair runs.
+{
+  const { attributeYellowBubblesToHero } = await import("../src/analysis/importRepair.js");
+  const players = [{ name: "hero", position: "UTG", isHero: true }, { name: "bb", position: "BB" }];
+  const cleaned = attributeYellowBubblesToHero({
+    heroName: "hero",
+    players,
+    streets: {
+      flop: {
+        actions: [
+          { actor: null, bubble: "yellow", action: "check" },
+          { actor: "bb", position: "BB", action: "check" },
+          { actor: "hero", position: "UTG", action: "bet", amountBb: 2.64 },
+          { actor: "bb", position: "BB", action: "call", amountBb: 2.64 },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(cleaned.streets.flop.actions.map((action) => `${action.actor}:${action.action}`), ["bb:check", "hero:bet", "bb:call"]);
+  // When Hero really is first to act (BB against the CO), the leading bubble is Hero's check and stays.
+  const firstToAct = attributeYellowBubblesToHero({
+    heroName: "hero",
+    players: [{ name: "hero", position: "BB", isHero: true }, { name: "co", position: "CO" }],
+    streets: { flop: { actions: [{ actor: null, bubble: "yellow", action: "check" }, { actor: "co", position: "CO", action: "bet", amountBb: 2 }] } },
+  });
+  assert.deepEqual(firstToAct.streets.flop.actions.map((action) => `${action.actor}:${action.action}`), ["hero:check", "co:bet"]);
+  const outOfTurn = validateImportedActionConsistency({
+    players,
+    streets: { flop: { actions: [{ actor: "hero", position: "UTG", action: "check" }, { actor: "bb", position: "BB", action: "check" }] } },
+  });
+  assert.equal(outOfTurn.safe, false);
+  assert.ok(outOfTurn.issues.some((issue) => issue.code === "POSTFLOP_ORDER_VIOLATION"));
+  console.log("postflop order import checks passed");
+}
+
+// Hand-History-1790498421556 (limped pot): the model returned UTG's 1 BB limp as "raise 1" and the BB's
+// closing check as a yellow Hero bubble (Hero is the BTN). Both must be repaired or the replay rejects
+// the hand and no decision can load.
+{
+  const { attributeYellowBubblesToHero } = await import("../src/analysis/importRepair.js");
+  const { normalizeNonRaises } = await import("../src/analysis/importActionConsistency.js");
+  const players = [
+    { name: "sb", position: "SB" }, { name: "bb", position: "BB" }, { name: "utg", position: "UTG" },
+    { name: "co", position: "CO" }, { name: "hero", position: "BTN", isHero: true },
+  ];
+  const repaired = normalizeNonRaises(attributeYellowBubblesToHero({
+    heroName: "hero",
+    players,
+    streets: {
+      preflop: {
+        actions: [
+          { actor: "sb", position: "SB", action: "blind", amountBb: 0.5 },
+          { actor: "bb", position: "BB", action: "blind", amountBb: 1 },
+          { actor: "utg", position: "UTG", action: "raise", amountBb: 1 },
+          { actor: "co", position: "CO", action: "call", amountBb: 1 },
+          { actor: "hero", position: "BTN", action: "call", amountBb: 1 },
+          { actor: "sb", position: "SB", action: "fold" },
+          { actor: null, position: null, bubble: "yellow", action: "check" },
+        ],
+      },
+      flop: { actions: [{ actor: "bb", position: "BB", action: "check" }, { actor: "utg", position: "UTG", action: "raise", amountBb: 3.6 }] },
+    },
+  }));
+  assert.deepEqual(
+    repaired.streets.preflop.actions.map((action) => `${action.position}:${action.action}`),
+    ["SB:blind", "BB:blind", "UTG:call", "CO:call", "BTN:call", "SB:fold", "BB:check"],
+  );
+  assert.equal(repaired.streets.flop.actions[1].action, "raise", "a real raise over no bet is left alone");
+  console.log("limped-pot import repair checks passed");
+}

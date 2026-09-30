@@ -1,8 +1,8 @@
+import { cardText } from "./cardText.js";
 function normalizeCardToken(card) {
-  const compact = String(card || "").trim().replace(/\s+/g, "");
-  const match = compact.match(/^([2-9TJQKA])([cdhs])$/i);
+  const match = cardText(card).match(/^(10|[2-9TJQKA])([cdhs])$/i);
   if (!match) return null;
-  return match[1].toUpperCase() + match[2].toLowerCase();
+  return (match[1] === "10" ? "T" : match[1].toUpperCase()) + match[2].toLowerCase();
 }
 
 export function normalizeImportedCardToken(card) {
@@ -45,17 +45,6 @@ export function repairImportedHeroHandFromNotes(hand = {}) {
     };
   }
   return hand;
-}
-
-export function shouldVerifyHeroHandWithFocusedVision(hand = {}, { actionIssues = [] } = {}) {
-  if (!Array.isArray(hand.heroHand) || hand.heroHand.length !== 2) return false;
-  if (actionIssues.length > 0) return true;
-  if (new Set(hand.heroHand.map(normalizeCardToken).filter(Boolean)).size !== 2) return true;
-  const notes = Array.isArray(hand.confidenceNotes) ? hand.confidenceNotes.join(" ") : "";
-  if (/low confidence|unclear|uncertain|cannot read|not visible/i.test(notes)) return true;
-  const namedHero = normalizePlayerIdentity(hand.heroName);
-  const declaredHero = (hand.players || []).find((player) => player.isHero);
-  return Boolean(namedHero && declaredHero && normalizePlayerIdentity(declaredHero.name) !== namedHero);
 }
 
 export function applyFocusedActionRepair(hand = {}, repair = {}) {
@@ -167,10 +156,47 @@ export function attributeYellowBubblesToHero(hand = {}) {
     street,
     {
       ...data,
-      actions: (data?.actions || []).map((action) => (String(action?.bubble || "").toLowerCase() === "yellow"
-        ? { ...action, actor: heroName, position: hero.position ?? null }
-        : action)),
+      actions: dropRepeatedActions(dropOutOfTurnHeroBubble(street, (data?.actions || []).map((action) => (String(action?.bubble || "").toLowerCase() === "yellow"
+        ? { ...action, actor: heroName, position: hero.position ?? null, fromYellowBubble: true }
+        : action)), hand, hero)).map(({ fromYellowBubble, ...action }) => action),
     },
   ]));
   return { ...hand, streets };
+}
+
+const POSTFLOP_ORDER = ["SB", "BB", "UTG", "MP", "HJ", "CO", "BTN"];
+
+// The model sometimes invents a yellow "Check" bubble at the top of a postflop street. Taken as Hero's
+// first action it puts Hero ahead of a player who acts before Hero postflop (e.g. UTG "checking" before
+// the BB). If the next named row belongs to such a player, the bubble can't be Hero's first action: drop it.
+function dropOutOfTurnHeroBubble(street, actions, hand, hero) {
+  if (street === "preflop") return reassignPreflopBubbleCheck(actions, hand, hero);
+  if (!actions[0]?.fromYellowBubble) return actions;
+  const positionOf = (action) => String(action?.position || (hand.players || []).find((player) => player.name === action?.actor)?.position || "").toUpperCase();
+  const heroRank = POSTFLOP_ORDER.indexOf(String(hero.position || "").toUpperCase());
+  const next = actions.slice(1).find((action) => action?.actor && action.actor !== hero.name);
+  const nextRank = POSTFLOP_ORDER.indexOf(positionOf(next));
+  return heroRank >= 0 && nextRank >= 0 && nextRank < heroRank ? actions.slice(1) : actions;
+}
+
+// Preflop only the big blind can check (its option in a limped pot). A yellow "Check" bubble given to a
+// Hero in any other seat is the BB's check misread as a bubble: give it to the BB, or drop it if there
+// is no BB still in the hand.
+function reassignPreflopBubbleCheck(actions, hand, hero) {
+  const heroPosition = String(hero.position || "").toUpperCase();
+  if (heroPosition === "BB") return actions;
+  const bb = (hand.players || []).find((player) => String(player.position || "").toUpperCase() === "BB");
+  const bbFolded = actions.some((action) => action.actor === bb?.name && String(action.action || "").toLowerCase() === "fold");
+  return actions.flatMap((action) => {
+    if (!action.fromYellowBubble || String(action.action || "").toLowerCase() !== "check") return [action];
+    return bb && !bbFolded ? [{ ...action, actor: bb.name, position: "BB", fromYellowBubble: false }] : [];
+  });
+}
+
+// No player acts twice in a row on a street. The vision model sometimes returns Hero's action both as an
+// unnamed yellow bubble and as a named history row; once the bubble is attributed to Hero they are the
+// same row twice (e.g. "BB check, BB check"), which breaks the replay. Drop the exact repeat.
+function dropRepeatedActions(actions) {
+  const key = (action) => [String(action?.actor || "").trim().toLowerCase(), String(action?.action || "").toLowerCase(), action?.amountBb ?? null].join("|");
+  return actions.filter((action, index) => index === 0 || !String(action?.actor || "").trim() || key(action) !== key(actions[index - 1]));
 }

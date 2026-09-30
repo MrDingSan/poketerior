@@ -91,3 +91,19 @@ await assert.rejects(
 );
 
 console.log("nebiusClient tests passed");
+
+// Headers arrive but the body stalls: the timeout must still fire instead of hanging the request forever.
+{
+  const stalledBody = async (_url, { signal }) => ({
+    ok: true,
+    status: 200,
+    json: () => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("body aborted")))),
+  });
+  const started = Date.now();
+  await assert.rejects(
+    callNebius({ apiKey: "test", prompt: "hi", timeoutMs: 50, fetchImpl: stalledBody }),
+    /timed out after 50ms/,
+  );
+  assert.ok(Date.now() - started < 2000, "stalled body should time out promptly");
+  console.log("Nebius stalled-body timeout check passed");
+}

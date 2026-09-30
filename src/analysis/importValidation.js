@@ -1,9 +1,10 @@
+import { cardText } from "./cardText.js";
 const RANKS = new Set(["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"]);
 const SUITS = new Set(["c", "d", "h", "s"]);
 
 function normalizeCard(value, label) {
   const raw = String(value || "").trim();
-  const match = raw.match(/^(10|[2-9TJQKA])([cdhs])$/i);
+  const match = cardText(raw).match(/^(10|[2-9TJQKA])([cdhs])$/i);
   const rank = match?.[1]?.toUpperCase() === "10" ? "T" : match?.[1]?.toUpperCase();
   const suit = match?.[2]?.toLowerCase();
   if (!RANKS.has(rank) || !SUITS.has(suit)) {

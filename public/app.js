@@ -83,7 +83,7 @@ const PREFLOP_RANGE_LOCK = typeof window !== "undefined" && window.PokerCoachPre
 const STREET_RANGE_LOCK = typeof window !== "undefined" && window.PokerCoachStreetRangeLock
   ? window.PokerCoachStreetRangeLock.createStreetRangeLock({ storage: (() => { try { return window.sessionStorage; } catch { return null; } })() })
   : null;
-let verdictState = { ai: null, local: null, solver: null, solverConfidence: null, node: "" };
+let verdictState = { ai: null, skill: null, solver: null, solverConfidence: null, node: "" };
 let currentVisionImportId = null;
 let screenshotImportGeneration = 0;
 let currentRangeViews = { llm: null };
@@ -283,6 +283,9 @@ function handClass(cardA, cardB) {
 }
 
 const RANGE_NOTATION = typeof window !== "undefined" ? window.PokerCoachRangeNotation : null;
+const HAND_EQUITY = typeof window !== "undefined" ? window.PokerCoachHandEquity : null;
+const ANALYSIS_STREET_HISTORY = typeof window !== "undefined" ? window.PokerCoachAnalysisStreetHistory : null;
+const analysisStreetHistory = ANALYSIS_STREET_HISTORY?.createStreetHistory() || null;
 
 function parseRange(rangeText, blockers) {
   return RANGE_NOTATION.parseRange(rangeText, blockers);
@@ -742,7 +745,28 @@ function estimateEquity(heroCards, villainCombos, boardCards, iterations = 2200)
   return (wins + ties / 2) / iterations;
 }
 
-function classifyCombos(heroCards, villainCombos, boardCards) {
+// Hero's equity against each villain combo (exact from the flop on, see handEquity.js), bucketed as ahead /
+// near flip / behind but drawing live / drawing thin or dead. `behind` counts both behind buckets, and
+// `equity` is the mean over combos, so the headline number and the buckets always agree.
+function classifyCombos(heroCards, villainCombos, boardCards, { potOdds = null } = {}) {
+  if (HAND_EQUITY) {
+    const matchups = HAND_EQUITY.rangeMatchups(heroCards, villainCombos, boardCards, { potOdds });
+    const { ahead, close, live, thin } = matchups.buckets;
+    return {
+      ahead: ahead.length,
+      behind: live.length + thin.length,
+      close: close.length,
+      live: live.length,
+      thin: thin.length,
+      equity: matchups.equity,
+      exact: matchups.exact,
+      averages: matchups.averages,
+      potOdds: matchups.potOdds,
+      priced: matchups.priced,
+      total: matchups.total,
+      buckets: matchups.buckets,
+    };
+  }
   const usable = villainCombos;
   if (usable.length === 0) return { ahead: 0, behind: 0, close: 0 };
   const result = { ahead: [], behind: [], close: [] };
@@ -883,24 +907,49 @@ function renderRangeBreakdown(target, range, comboClass) {
 
 function renderEquityBuckets(target, comboClass) {
   if (!target) return;
-  const { ahead, behind, close } = comboClass.buckets;
-  const total = Math.max(ahead.length + behind.length + close.length, 1);
+  if (!comboClass.buckets.live) {
+    const { ahead, behind, close } = comboClass.buckets;
+    const total = Math.max(ahead.length + behind.length + close.length, 1);
+    const share = (items) => `${((items.length / total) * 100).toFixed(1)}%`;
+    target.innerHTML = `
+      <div class="equity-bar" role="img" aria-label="${ahead.length} ahead, ${close.length} near flip, ${behind.length} behind">
+        <span class="is-ahead" style="width:${share(ahead)}"></span>
+        <span class="is-close" style="width:${share(close)}"></span>
+        <span class="is-behind" style="width:${share(behind)}"></span>
+      </div>
+      <div class="combo-buckets">
+        ${renderComboBucket("Hero is ahead of", ahead, "ahead")}
+        ${renderComboBucket("Hero is behind", behind, "behind")}
+        ${renderComboBucket("Near-flip region", close, "close")}
+      </div>
+    `;
+    return;
+  }
+  const { ahead, close, live, thin } = comboClass.buckets;
+  const total = Math.max(ahead.length + close.length + live.length + thin.length, 1);
   const share = (items) => `${((items.length / total) * 100).toFixed(1)}%`;
+  const priceLine = Number.isFinite(comboClass.priced) && comboClass.potOdds
+    ? `<p class="equity-price">You need ${pct(comboClass.potOdds)} equity to call, and have it against <strong>${comboClass.priced} of ${comboClass.total}</strong> villain combos.</p>`
+    : "";
   target.innerHTML = `
-    <div class="equity-bar" role="img" aria-label="${ahead.length} ahead, ${close.length} near flip, ${behind.length} behind">
+    <div class="equity-bar" role="img" aria-label="${ahead.length} ahead, ${close.length} near flip, ${live.length} behind but live, ${thin.length} drawing thin or dead">
       <span class="is-ahead" style="width:${share(ahead)}"></span>
       <span class="is-close" style="width:${share(close)}"></span>
-      <span class="is-behind" style="width:${share(behind)}"></span>
+      <span class="is-behind" style="width:${share(live)}"></span>
+      <span class="is-thin" style="width:${share(thin)}"></span>
     </div>
+    ${priceLine}
     <div class="combo-buckets">
-      ${renderComboBucket("Hero is ahead of", ahead, "ahead")}
-      ${renderComboBucket("Hero is behind", behind, "behind")}
-      ${renderComboBucket("Near-flip region", close, "close")}
+      ${renderComboBucket("Ahead", ahead, "ahead")}
+      ${renderComboBucket("Near flip", close, "close")}
+      ${renderComboBucket("Behind, live", live, "behind")}
+      ${renderComboBucket("Thin or dead", thin, "thin")}
     </div>
+    <p class="equity-method">Hero's equity against each combo: ahead 55%+, near flip 45–55%, behind but live 10–45%, thin or dead under 10%. ${comboClass.exact ? "Counted exactly over every remaining runout." : "Preflop: estimated from sampled runouts."}</p>
   `;
 }
 
-function renderComboBucket(label, items, tone = "") {
+function renderComboBucket(label, items, tone = "", averageEquity = null) {
   const list =
     items.length > 0
       ? items
@@ -912,7 +961,7 @@ function renderComboBucket(label, items, tone = "") {
       : `<li>No combos in this bucket</li>`;
   return `
     <details class="combo-bucket"${tone ? ` data-tone="${tone}"` : ""}>
-      <summary><span>${label}</span><strong>${items.length} combo${items.length === 1 ? "" : "s"}</strong></summary>
+      <summary><span>${label}</span><strong>${items.length} combo${items.length === 1 ? "" : "s"}${Number.isFinite(averageEquity) ? ` <small class="bucket-avg">avg ${pct(averageEquity)}</small>` : ""}</strong></summary>
       <ul class="bucket-combo-list">${list}</ul>
     </details>
   `;
@@ -1037,7 +1086,9 @@ const NARROWING_ROWS = [
 // so "kept" can be checked against what the street's own rangeText actually contains. Loose by design:
 // this only flags a class as inconsistent when it parses cleanly and shares zero combos with rangeText,
 // never on unparseable prose (so plain-English phrasing like "medium pairs" is silently skipped).
-const NARROWING_TOKEN_PATTERN = /\b[2-9TJQKA]{2}[so]?\+?(?:-[2-9TJQKA]{2}[so]?)?\b/g;
+// Lookarounds instead of \b: skip numbers in prose ("~25% equity", "33%", "2.8bb", "(24 combos)", "+27 more"
+// would otherwise read as hands 52/33/28/42/72), and keep a trailing "+" ("ATo+," has no word boundary after the "+").
+const NARROWING_TOKEN_PATTERN = /(?<![\w.~$+])[2-9TJQKA]{2}[so]?(?:\+|-[2-9TJQKA]{2}[so]?)?(?![\w%]|\.\d|\s+(?:combos?|more|bb)\b)/g;
 function findUnsupportedKeptClasses(keptText, rangeText) {
   if (!RANGE_NOTATION || !keptText || !rangeText) return [];
   const keptClasses = new Set();
@@ -1050,6 +1101,38 @@ function findUnsupportedKeptClasses(keptText, rangeText) {
   return [...keptClasses].filter((handClass) => !actualClasses.has(handClass));
 }
 
+const NARROWING_ROLE_COLORS = {
+  "strong value": "#0f6e56",
+  "thin value/showdown": "#185fa5",
+  "draws/semi-bluffs": "#534ab7",
+  "air/bluffs": "#5f5e5a",
+};
+
+// A one-to-two sentence summary of the list, with one row per hand group (what it is, how many combos, the
+// reason) behind a toggle; each row opens to its exact hands.
+function renderNarrowingGroups(title, groups, tone, summary = "") {
+  if (!groups.length) return "";
+  const total = groups.reduce((sum, group) => sum + (Number(group.combos) || 0), 0);
+  const rows = groups
+    .map(
+      (group) => `<details class="ng-row ng-${tone}">
+        <summary>
+          <span class="ng-label"><i class="ng-dot" style="background:${NARROWING_ROLE_COLORS[group.role] || "#5f5e5a"}"></i>${escapeHtml(group.label)}</span>
+          <span class="ng-count">${escapeHtml(group.combos)}</span>
+          <span class="ng-why">${escapeHtml(group.why || "No reason recorded.")}</span>
+        </summary>
+        <p class="ng-hands">${escapeHtml(group.hands || "")}</p>
+      </details>`,
+    )
+    .join("");
+  const count = `${groups.length} group${groups.length === 1 ? "" : "s"}`;
+  return `<section class="ng-list ng-list-${tone}">
+    <h4><span>${title}</span><span>${total} combo${total === 1 ? "" : "s"}</span></h4>
+    ${summary ? `<p class="ng-summary">${escapeHtml(summary)}</p>` : ""}
+    <details class="ng-more"><summary>Show ${count}</summary>${rows}</details>
+  </section>`;
+}
+
 // Explains each street's shrink from the LLM's `narrowing` fields; combo counts come from the parsed ranges.
 function renderRangeNarrowing(target, summaries = [], stages = []) {
   if (!target) return;
@@ -1060,15 +1143,29 @@ function renderRangeNarrowing(target, summaries = [], stages = []) {
       const before = stages[index - 1]?.snapshot?.combos;
       const after = stages[index]?.snapshot?.combos;
       const delta = Number.isFinite(before) && Number.isFinite(after) ? `${before} → ${after} combos` : "";
-      const rows = NARROWING_ROWS.filter(([key]) => item.narrowing[key])
+      // Group-decision ranges come with one row per group; the prose rows cover the rest of the street.
+      const structured = Array.isArray(item.narrowing.keptGroups);
+      const rows = NARROWING_ROWS.filter(([key]) => item.narrowing[key] && !(structured && (key === "kept" || key === "removed")))
         .map(([key, label]) => `<div class="narrowing-row"><span>${label}</span><p>${escapeHtml(item.narrowing[key])}</p></div>`)
         .join("");
-      if (!rows) return "";
+      const listed = structured
+        ? [...item.narrowing.keptGroups, ...(item.narrowing.removedGroups || [])].reduce((sum, group) => sum + (Number(group.combos) || 0), 0)
+        : 0;
+      // Kept + Removed covers the combos still possible on this board; the rest share a card with it.
+      const blocked = structured && Number.isFinite(before) ? before - listed : 0;
+      const groups = structured
+        ? renderNarrowingGroups("Kept", item.narrowing.keptGroups, "keep", item.narrowing.keptSummary) +
+          renderNarrowingGroups("Removed", item.narrowing.removedGroups || [], "drop", item.narrowing.removedSummary) +
+          (blocked > 0
+            ? `<p class="ng-note">${blocked} more combo${blocked === 1 ? "" : "s"} became impossible because ${blocked === 1 ? "it shares" : "they share"} a card with the new board.</p>`
+            : "")
+        : "";
+      if (!rows && !groups) return "";
       const unsupported = findUnsupportedKeptClasses(item.narrowing.kept, item.rangeText);
       const warning = unsupported.length
         ? `<div class="narrowing-row narrowing-warning"><span>⚠ Inconsistent</span><p>The LLM's "kept" text names ${escapeHtml(unsupported.join(", "))}, but this street's actual range does not include ${unsupported.length === 1 ? "it" : "them"}. The chart and combo list below reflect the real range, not this description.</p></div>`
         : "";
-      return `<div class="narrowing-card"><div class="narrowing-head"><strong>Why the range narrowed on the ${escapeHtml(streetLabel(item.street))}</strong><span>${escapeHtml(delta)}</span></div>${rows}${warning}</div>`;
+      return `<div class="narrowing-card"><div class="narrowing-head"><strong>Why the range narrowed on the ${escapeHtml(streetLabel(item.street))}</strong><span>${escapeHtml(delta)}</span></div>${rows}${groups}${warning}</div>`;
     })
     .filter(Boolean);
   target.innerHTML = cards.join("");
@@ -1106,6 +1203,7 @@ function selectRangeStreet(street, options = {}) {
   const stage = activeRangeEvolution.byStreet.get(street);
   if (!stage) return;
   activeRangeEvolution.selectedStreet = street;
+  if (!options.fromStrip) selectAnalysisStreet(street, { fromRanges: true });
 
   $("rangeSteps")?.querySelectorAll("[data-street]").forEach((el) => {
     el.classList.toggle("is-selected", el.getAttribute("data-street") === street);
@@ -1132,10 +1230,169 @@ function selectRangeStreet(street, options = {}) {
     if (details && !details.open) details.open = true;
     const stagePanel = $("rangeTimeline")?.querySelector(`.range-stage[data-street="${street}"]`);
     if (stagePanel) {
+      // Keep the detail panel in sync without moving the page: the user is looking at the steps and chart.
       $("rangeTimeline").querySelectorAll(".range-stage").forEach((panel) => { panel.open = panel === stagePanel; });
-      stagePanel.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }
+}
+
+// The shared street strip under the analysis tabs: Ranges, Equity and AI Analysis all follow the street picked
+// there. The analyzed street shows the live panels; an earlier street shows that street's own finished
+// analysis from this hand when there is one, otherwise equity recomputed from that street's range.
+const STREET_VIEW_PANELS = {
+  equity: ["equityMetric", "potOddsMetric", "evLabel", "evMetric", "confluenceMetric", "equityBuckets", "boardTextureSummary"],
+  ai: ["harringtonAnalysis", "pokerSkillAnalysis"],
+};
+let viewedAnalysisStreet = null;
+
+function displayedAnalysisSpot() {
+  const view = currentRangeViews.llm;
+  return view?.status === "ready" ? view.payload?.spot || null : null;
+}
+
+function captureStreetView() {
+  return Object.fromEntries(Object.values(STREET_VIEW_PANELS).flat().map((id) => {
+    const element = $(id);
+    return [id, { html: element?.innerHTML || "", className: element?.className || "" }];
+  }));
+}
+
+function recordAnalysisStreetHistory() {
+  const spot = displayedAnalysisSpot();
+  if (spot) analysisStreetHistory?.record(spot, captureStreetView());
+}
+
+function resetAnalysisStreetView() {
+  viewedAnalysisStreet = null;
+  showStreetHistoryPanels(null);
+  const strip = $("analysisStreetStrip");
+  if (strip) {
+    strip.hidden = true;
+    strip.innerHTML = "";
+  }
+}
+
+function renderAnalysisStreetStrip() {
+  const strip = $("analysisStreetStrip");
+  if (!strip) return;
+  const spot = displayedAnalysisSpot();
+  if (!spot) {
+    resetAnalysisStreetView();
+    return;
+  }
+  const current = spot.street || "preflop";
+  const selected = viewedAnalysisStreet || current;
+  strip.hidden = false;
+  strip.innerHTML = `<span class="street-strip-label">Street</span>${RANGE_STEP_STREETS.map((street) => {
+    const reached = streetOrderIndex(street) <= streetOrderIndex(current);
+    const label = `${streetLabel(street)}${street === current ? " · current" : ""}`;
+    return reached
+      ? `<button type="button" class="street-strip-btn${street === current ? " is-current" : ""}" data-view-street="${street}" aria-pressed="${street === selected}">${label}</button>`
+      : `<span class="street-strip-btn is-pending" aria-disabled="true">${label}</span>`;
+  }).join("")}`;
+  if (strip.dataset.wired !== "true") {
+    strip.dataset.wired = "true";
+    strip.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-view-street]");
+      if (button) selectAnalysisStreet(button.getAttribute("data-view-street"));
+    });
+  }
+}
+
+function selectAnalysisStreet(street, { fromRanges = false } = {}) {
+  const spot = displayedAnalysisSpot();
+  if (!spot) {
+    resetAnalysisStreetView();
+    return;
+  }
+  const current = spot.street || "preflop";
+  if (streetOrderIndex(street) > streetOrderIndex(current)) return;
+  viewedAnalysisStreet = street === current ? null : street;
+  if (!fromRanges && activeRangeEvolution?.byStreet.has(street)) {
+    selectRangeStreet(street, { skipDetailToggle: true, fromStrip: true });
+  }
+  if (viewedAnalysisStreet) {
+    const stored = analysisStreetHistory?.lookup(spot, street) || null;
+    showStreetHistoryPanels({
+      equity: streetHistoryNote(street, current, stored ? "equity" : "computed") + (stored ? storedPanelHtml("equity", stored) : computedEquityPanelHtml(street)),
+      ai: streetHistoryNote(street, current, stored ? "ai" : "missing") + (stored ? storedPanelHtml("ai", stored) : ""),
+    });
+  } else {
+    showStreetHistoryPanels(null);
+  }
+  renderAnalysisStreetStrip();
+}
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest?.("[data-view-street-back]")) selectAnalysisStreet(displayedAnalysisSpot()?.street || "preflop");
+});
+
+function showStreetHistoryPanels(content) {
+  for (const name of Object.keys(STREET_VIEW_PANELS)) {
+    const target = document.querySelector(`[data-street-history="${name}"]`);
+    if (!target) continue;
+    target.innerHTML = content ? content[name] || "" : "";
+    target.closest(".analysis-panel")?.classList.toggle("is-viewing-history", Boolean(content));
+  }
+}
+
+function streetHistoryNote(street, current, kind) {
+  const text = {
+    equity: `${streetLabel(street)} decision, as analyzed earlier in this hand.`,
+    ai: `${streetLabel(street)} decision, as analyzed earlier in this hand.`,
+    computed: `No ${streetLabel(street).toLowerCase()} decision was analyzed, so this is Hero's equity against villain's ${streetLabel(street).toLowerCase()} range on the ${streetLabel(street).toLowerCase()} board. Pot odds and EV need that decision's pot.`,
+    missing: `No ${streetLabel(street).toLowerCase()} decision has been analyzed for this hand yet. Choose Hero's ${streetLabel(street).toLowerCase()} action in the hand timeline and run the analysis to see it here.`,
+  }[kind];
+  return `<div class="street-history-note"><p><strong>Viewing the ${escapeHtml(streetLabel(street))}.</strong> ${escapeHtml(text)}</p><button type="button" class="secondary-btn" data-view-street-back>Back to ${escapeHtml(streetLabel(current))}</button></div>`;
+}
+
+// Rebuilds the live panel's markup around the stored element contents, renaming ids so they stay unique.
+function storedPanelHtml(name, stored) {
+  const template = document.createElement("div");
+  const panel = document.querySelector(`[data-street-history="${name}"]`)?.closest(".analysis-panel");
+  for (const child of panel?.children || []) {
+    if (!child.classList.contains("street-history-view")) template.append(child.cloneNode(true));
+  }
+  for (const id of STREET_VIEW_PANELS[name]) {
+    const element = template.querySelector(`#${id}`);
+    if (!element || !stored[id]) continue;
+    element.innerHTML = stored[id].html;
+    element.className = stored[id].className;
+  }
+  template.querySelectorAll("[id]").forEach((element) => {
+    element.dataset.viewId = element.id;
+    element.removeAttribute("id");
+  });
+  return template.innerHTML;
+}
+
+function computedEquityPanelHtml(street) {
+  const view = currentRangeViews.llm;
+  const summary = (view?.interpretation?.streetSummaries || []).find((item) => item.street === street);
+  const heroCards = view?.heroCards || [];
+  const boardCards = boardThroughStreet(view?.boardCards || [], street);
+  let comboClass = null;
+  try {
+    const range = summary?.rangeText ? parseRange(summary.rangeText, [...heroCards, ...boardCards]) : null;
+    if (range?.combos.length) comboClass = classifyCombos(heroCards, range.combos, boardCards);
+  } catch {
+    comboClass = null;
+  }
+  if (!comboClass) return `<p class="ws-empty">No ${escapeHtml(streetLabel(street).toLowerCase())} range was captured, so equity cannot be computed for that street.</p>`;
+  const buckets = document.createElement("div");
+  renderEquityBuckets(buckets, comboClass);
+  const texture = document.createElement("div");
+  texture.innerHTML = boardTextureSummaryHtml(boardCards, street);
+  return `
+    <div class="metric-grid">
+      <div><span>Hero equity</span><strong data-view-id="equityMetric">${pct(comboClass.equity)}</strong></div>
+      <div><span>Pot odds</span><strong>—</strong></div>
+      <div><span>Equity share</span><strong>—</strong></div>
+      <div><span>Villain combos</span><strong>${comboClass.total}</strong></div>
+    </div>
+    <article class="ws-card"><div class="ws-card-head"><span>Hand vs range</span></div><div class="equity-buckets">${buckets.innerHTML}</div></article>
+    <article class="ws-card"><div class="ws-card-head"><span>Board texture</span></div><div class="board-texture-summary">${texture.innerHTML}</div></article>
+  `;
 }
 
 const VILLAIN_LINE_LABEL = {
@@ -1190,6 +1447,7 @@ function renderLLMRangeView(view) {
     $("actionBuckets").innerHTML = "";
     $("rangeDetails").innerHTML = "";
     activeRangeEvolution = null;
+    resetAnalysisStreetView();
     return;
   }
 
@@ -1204,6 +1462,7 @@ function renderLLMRangeView(view) {
     $("actionBuckets").innerHTML = "";
     $("rangeDetails").innerHTML = "";
     activeRangeEvolution = null;
+    resetAnalysisStreetView();
     return;
   }
 
@@ -1222,6 +1481,7 @@ function renderLLMRangeView(view) {
     $("actionBuckets").innerHTML = "";
     $("rangeDetails").innerHTML = "";
     activeRangeEvolution = null;
+    resetAnalysisStreetView();
     return;
   }
 
@@ -1403,13 +1663,6 @@ function recommend({ equity, potOdds, ev, confluence, heroClass }) {
   return "Fold";
 }
 
-function localRangeSummary({ action, equity, potOdds, ev, confluence, comboClass, totalCombos, decisionNode, interpretation }) {
-  const priceText = decisionNode.facingBet
-    ? `Hero needs ${pct(potOdds)} equity to call; the call EV is ${signed(ev)}bb.`
-    : "Hero is not facing a bet, so there is no call price.";
-  return `${decisionNode.title}. AI villain range: ${interpretation.summary || interpretation.rangeText}. Against its ${totalCombos} live combos Hero has ${pct(equity)} equity, is ahead of ${comboClass.ahead}, behind ${comboClass.behind}, and close against ${comboClass.close}. ${priceText} Confluence ${confluence.toFixed(0)}/100. Local heuristic: ${action}.`;
-}
-
 function recommendForNode(node, metrics) {
   let action;
   if (node.facingBet) action = recommend(metrics);
@@ -1452,7 +1705,6 @@ const ANALYSIS_SNAPSHOT_ELEMENT_IDS = [
   "rangeBreakdown",
   "actionBuckets",
   "rangeDetails",
-  "recommendation",
   "equityMetric",
   "potOddsMetric",
   "evMetric",
@@ -1465,8 +1717,6 @@ const ANALYSIS_SNAPSHOT_ELEMENT_IDS = [
   "evLabel",
   "rangeSteps",
   "rangeHeadLabel",
-  "aiModel",
-  "aiReasoning",
   "solverResult",
   "summaryContext",
   "summaryVerdict",
@@ -1551,6 +1801,9 @@ function restoreImportedAnalysisSnapshot(snapshot) {
     element.innerHTML = state.html || "";
     if (typeof state.className === "string") element.className = state.className;
   }
+  // Rebuild the range view from the restored data so the street strip and range steps point at this decision.
+  if (currentRangeViews.llm?.status === "ready") renderActiveRangeView();
+  else resetAnalysisStreetView();
   updateCardVisualization();
   updateProgressiveControls();
   return true;
@@ -1765,16 +2018,10 @@ async function analyze(triggerButton = null, cacheState = null, importedDecision
     $("potOddsMetric").textContent = decisionNode.facingBet ? pct(call / (pot + call)) : "N/A";
     $("evMetric").textContent = "...";
     $("confluenceMetric").textContent = "...";
-    $("recommendation").innerHTML = `
-      <p class="eyebrow">${decisionNode.title}</p>
-      <p class="llm-status">Waiting for the AI range interpretation before calculating equity...</p>
-    `;
-    verdictState = { ai: null, local: null, solver: null, node: decisionNode.title };
+    verdictState = { ai: null, skill: null, solver: null, node: decisionNode.title };
     $("summaryContext").textContent = summaryContextText(decisionNode, street, pot);
     renderSummaryVerdict("Analyzing…");
     renderBoardTextureSummary(boardCards, street);
-    $("aiReasoning").innerHTML = `<p class="llm-status">Waiting for equity before building the coach's reasoning...</p>`;
-    $("aiModel").textContent = "";
     $("solverResult").innerHTML = street === "preflop"
       ? `<span>TexasSolver</span><strong>Not used preflop</strong><small>The solver checks flop, turn, and river spots.</small>`
       : `<span>TexasSolver</span><strong>Waiting for the AI range...</strong>`;
@@ -1815,12 +2062,6 @@ async function analyze(triggerButton = null, cacheState = null, importedDecision
       ["equityMetric", "evMetric", "confluenceMetric"].forEach((id) => {
         $(id).textContent = "-";
       });
-      $("recommendation").innerHTML = `
-        <p class="eyebrow">${decisionNode.title}</p>
-        <h2 class="fold">No Range</h2>
-        <p class="llm-status warning">${escapeHtml(rangeError)} Equity and AI reasoning need villain's range. Use Retry in the Ranges tab.</p>
-      `;
-      $("aiReasoning").innerHTML = `<p class="llm-status warning">Coach reasoning needs villain's range.</p>`;
       if (street !== "preflop") $("solverResult").innerHTML = `<span>TexasSolver</span><strong>Skipped</strong><small>The solver needs villain's range.</small>`;
       renderSummaryVerdict("No range");
       $("calculationLog").innerHTML = calcRows([
@@ -1830,10 +2071,10 @@ async function analyze(triggerButton = null, cacheState = null, importedDecision
     } else {
       const rangeText = interpretation.rangeText;
       const rangeSource = `LLM range interpreter (${rangeView.provider || "unknown"}:${rangeView.model || "unknown"})`;
-      const equity = estimateEquity(heroCards, range.combos, boardCards);
       const potOdds = decisionNode.facingBet ? call / (pot + call) : 0;
+      const comboClass = classifyCombos(heroCards, range.combos, boardCards, { potOdds });
+      const equity = Number.isFinite(comboClass.equity) ? comboClass.equity : estimateEquity(heroCards, range.combos, boardCards);
       const ev = decisionNode.facingBet ? equity * (pot + call) - call : equity * pot;
-      const comboClass = classifyCombos(heroCards, range.combos, boardCards);
       const equityEdge = decisionNode.facingBet ? equity - potOdds : equity - 0.5;
       const comboPressure = (comboClass.ahead - comboClass.behind) / Math.max(range.combos.length, 1);
       const blockerScore = 1 - range.combos.length / Math.max(parseRange(rangeText, []).combos.length, 1);
@@ -1878,31 +2119,12 @@ async function analyze(triggerButton = null, cacheState = null, importedDecision
       $("evMetric").textContent = `${signed(ev)} bb`;
       $("confluenceMetric").innerHTML = `${confluence.toFixed(0)}<small class="metric-scale">/100</small>`;
 
-      verdictState.local = action;
-      renderSummaryVerdict();
-      $("aiReasoning").innerHTML = `<p class="llm-status">Building the coach's reasoning...</p>`;
-      $("recommendation").innerHTML = `
-        <p class="eyebrow">${decisionNode.title} · Local heuristic</p>
-        ${verdictBadgeHtml(action, "verdict-badge is-large")}
-        <p class="llm-status">Equity calculated against the AI range. Building the reasoning layer...</p>
-        <div class="llm-analysis local-fallback">${escapeHtml(localRangeSummary({
-          action,
-          equity,
-          potOdds,
-          ev,
-          confluence,
-          comboClass,
-          totalCombos: range.combos.length,
-          decisionNode,
-          interpretation,
-        }))}</div>
-      `;
 
       $("calculationLog").innerHTML = `
         ${calcRows([
           ["Analysis ID", analysisId],
           ["Villain range", `${escapeHtml(rangeSource)} · ${escapeHtml(interpretation.confidence || "unknown")} confidence`],
-          ["Estimated equity", `${pct(equity)} from Monte Carlo runouts against the AI range`],
+          ["Estimated equity", `${pct(equity)} ${comboClass.exact ? "counted exactly over every runout" : "from sampled runouts"} against the AI range (average over its combos)`],
           [
             "Required equity",
             decisionNode.facingBet ? `${bb(call)} / (${bb(pot)} + ${bb(call)}) = ${pct(potOdds)}` : "Not applicable: hero is not facing a bet",
@@ -1921,7 +2143,12 @@ async function analyze(triggerButton = null, cacheState = null, importedDecision
                 ["Board texture", boardTexture(boardCards)],
               ]
             : []),
-          ["Combo comparison", `${comboClass.ahead} ahead / ${comboClass.behind} behind / ${comboClass.close} close`],
+          [
+            "Combo comparison",
+            Number.isFinite(comboClass.live)
+              ? `${comboClass.ahead} ahead (≥55%) / ${comboClass.close} near flip (45–55%) / ${comboClass.live} behind but live (10–45%) / ${comboClass.thin} thin or dead (<10%)`
+              : `${comboClass.ahead} ahead / ${comboClass.behind} behind / ${comboClass.close} close`,
+          ],
           ["Confluence formula", formula],
         ])}
       `;
@@ -1979,13 +2206,15 @@ async function analyze(triggerButton = null, cacheState = null, importedDecision
       }
     }
     const generationIsCurrent = !options.background || options.generation === importedPrefetchGeneration;
-    if (requestId === analysisRequestId && generationIsCurrent) saveImportedAnalysisSnapshot(cacheState);
+    if (requestId === analysisRequestId && generationIsCurrent) {
+      saveImportedAnalysisSnapshot(cacheState);
+      recordAnalysisStreetHistory();
+    }
     return true;
   } catch (error) {
     const canRenderError = requestId === analysisRequestId &&
       (!options.background || options.generation === importedPrefetchGeneration);
     if (canRenderError) {
-      $("recommendation").innerHTML = `<p class="eyebrow">Input issue</p><h2 class="fold">Check Cards</h2><p>${escapeHtml(error.message)}</p>`;
       renderSummaryVerdict("Check cards");
       analysisTabs?.setBusy("ai", false);
       $("harringtonAnalysis").innerHTML = `<p class="llm-status warning">Harrington-style analysis is waiting for a valid spot.</p>`;
@@ -2213,18 +2442,23 @@ function strategyBlurbHtml(analysis, fullLabel) {
   `;
 }
 
-// The numbers the coach reasons from, straight from the app's own calculation.
-function coachRowsHtml(math = {}) {
-  const facing = Number(math.call) > 0;
-  const rows = [
-    ["Hero equity vs range", Number.isFinite(math.equity) ? pct(math.equity) : "-"],
-    ["Pot before action", Number.isFinite(math.pot) ? `${bb(math.pot)} bb` : "-"],
-    ["Villain range", Number.isFinite(math.combosTotal) ? `${math.combosTotal} combos` : "-"],
-    ["Ahead / behind / close", [math.heroAheadCombos, math.heroBehindCombos, math.nearFlipCombos].every(Number.isFinite)
-      ? `${math.heroAheadCombos} / ${math.heroBehindCombos} / ${math.nearFlipCombos}` : "-"],
-    [facing ? "Call EV" : "Equity share of pot", Number.isFinite(math.ev) ? `${signed(math.ev)} bb` : "-"],
-  ];
-  return `<div class="coach-rows">${calcRows(rows)}</div>`;
+// The model's decision up front (action badge + size), its recommendation write-up, and the full analysis one click away.
+function strategyDecisionHtml(decision, analysis, fullLabel) {
+  if (!decision?.action) return strategyBlurbHtml(analysis, fullLabel);
+  const writeup = decision.writeup || ANALYSIS_PRESENTATION?.blurb(analysis) || "";
+  return `
+    <div class="decision-box" data-tone="${ANALYSIS_PRESENTATION?.actionTone(decision.action) || "neutral"}">
+      <div class="decision-head">
+        ${verdictBadgeHtml(decision.action, "verdict-badge is-large")}
+        ${decision.size ? `<span class="decision-size"><small>Size</small>${escapeHtml(decision.size)}</span>` : ""}
+      </div>
+      ${writeup ? `<div class="decision-writeup">${markdownToHtml(writeup)}</div>` : ""}
+    </div>
+    <details class="full-reasoning">
+      <summary>${fullLabel}</summary>
+      <div class="llm-analysis">${markdownToHtml(analysis)}</div>
+    </details>
+  `;
 }
 
 function verdictBadgeHtml(action, className = "verdict-badge") {
@@ -2233,12 +2467,12 @@ function verdictBadgeHtml(action, className = "verdict-badge") {
 }
 
 function agreementBadgeHtml() {
-  const aiAction = verdictState.ai || verdictState.local;
+  const aiAction = verdictState.skill || verdictState.ai;
   const agreement = ANALYSIS_PRESENTATION?.verdictAgreement(aiAction, verdictState.solver);
   if (!agreement) return "";
   return agreement === "agree"
-    ? `<span class="agreement-badge" data-agreement="agree">✓ Matches ${verdictState.ai ? "AI" : "local heuristic"}</span>`
-    : `<span class="agreement-badge" data-agreement="disagree">≠ ${verdictState.ai ? "AI" : "Local"} says ${escapeHtml(aiAction)}</span>`;
+    ? `<span class="agreement-badge" data-agreement="agree">✓ Matches ${verdictSourceLabel()}</span>`
+    : `<span class="agreement-badge" data-agreement="disagree">≠ ${verdictSourceLabel()} says ${escapeHtml(aiAction)}</span>`;
 }
 
 function summaryContextText(decisionNode, street, pot) {
@@ -2248,20 +2482,26 @@ function summaryContextText(decisionNode, street, pot) {
   return `${streetLabel} · ${nodeLabel}${potText}`;
 }
 
+function verdictSourceLabel() {
+  return verdictState.skill ? "Skill-grounded" : "AI coach";
+}
+
 function renderSummaryVerdict(statusText = "") {
   const target = $("summaryVerdict");
   if (!target) return;
-  const action = verdictState.ai || verdictState.local;
+  const action = verdictState.skill || verdictState.ai;
   if (!action) {
-    target.innerHTML = `<span class="verdict-badge" data-tone="neutral"${statusText ? "" : ' data-empty="true"'}>${escapeHtml(statusText || "Waiting for a spot")}</span>`;
+    // While an analysis is running the summary must stay visible; the empty badge hides the workspace.
+    const status = statusText || (verdictState.node ? "Analyzing…" : "");
+    target.innerHTML = `<span class="verdict-badge" data-tone="neutral"${status ? "" : ' data-empty="true"'}>${escapeHtml(status || "Waiting for a spot")}</span>`;
     return;
   }
-  const source = verdictState.ai ? "AI coach" : "Local heuristic";
+  const source = verdictSourceLabel();
   const agreement = ANALYSIS_PRESENTATION?.verdictAgreement(action, verdictState.solver);
   const solverPercent = Number.isFinite(verdictState.solverConfidence) ? ` ${(verdictState.solverConfidence * 100).toFixed(1)}%` : "";
   const solverText = verdictState.solver
     ? agreement === "agree"
-      ? `<span class="agreement-badge" data-agreement="agree">✓ ${verdictState.ai ? "AI" : "Local heuristic"} and TexasSolver agree</span>`
+      ? `<span class="agreement-badge" data-agreement="agree">✓ ${verdictSourceLabel()} and TexasSolver agree</span>`
       : `<span class="agreement-badge" data-agreement="disagree">≠ TexasSolver prefers ${escapeHtml(verdictState.solver)}</span>`
     : "";
   target.innerHTML = `
@@ -2274,15 +2514,17 @@ function renderSummaryVerdict(statusText = "") {
 
 function renderBoardTextureSummary(boardCards, street) {
   const target = $("boardTextureSummary");
-  if (!target) return;
+  if (target) target.innerHTML = boardTextureSummaryHtml(boardCards, street);
+}
+
+function boardTextureSummaryHtml(boardCards, street) {
   if (!boardCards.length || street === "preflop") {
-    target.innerHTML = `<strong>No board yet</strong><span>Board texture appears from the flop onward.</span>`;
-    return;
+    return `<strong>No board yet</strong><span>Board texture appears from the flop onward.</span>`;
   }
   const [streetLabel, ...rest] = boardTexture(boardCards).split(":");
   const description = rest.join(":").trim() || streetLabel;
   const note = ANALYSIS_PRESENTATION?.boardNote(boardCards) || "";
-  target.innerHTML = `<strong>${escapeHtml(description.charAt(0).toUpperCase() + description.slice(1))}</strong><span>${escapeHtml(note)}</span><small>${escapeHtml(boardCards.map((card) => `${rankDisplay(card[0])}${suitSymbol(card[1])}`).join(" "))} · ${escapeHtml(streetLabel)}</small>`;
+  return `<strong>${escapeHtml(description.charAt(0).toUpperCase() + description.slice(1))}</strong><span>${escapeHtml(note)}</span><small>${escapeHtml(boardCards.map((card) => `${rankDisplay(card[0])}${suitSymbol(card[1])}`).join(" "))} · ${escapeHtml(streetLabel)}</small>`;
 }
 
 function modelTrailHtml(result) {
@@ -2340,30 +2582,9 @@ async function renderLLMReasoning(payload, decisionNode, action, className, requ
     const result = await postJson("/api/analyze", payload, signal);
     if (requestId !== analysisRequestId) return;
 
-    const aiAction = ANALYSIS_PRESENTATION?.extractRecommendedAction(result.analysis, decisionNode.legalActions) || null;
-    verdictState.ai = aiAction;
-    const shownAction = aiAction || action;
-    const localNote = aiAction && aiAction.toLowerCase() !== action.toLowerCase()
-      ? `<p class="verdict-note">Local heuristic suggested ${escapeHtml(action)}; the coach overrides it after reading the full spot.</p>`
-      : "";
-    $("recommendation").innerHTML = `
-      <div class="recommendation-head">
-        ${verdictBadgeHtml(shownAction, "verdict-badge is-large")}
-        <p class="eyebrow">${decisionNode.title} · ${aiAction ? "Coach recommendation" : "Local heuristic"}</p>
-      </div>
-      ${modelTrailHtml(result)}
-      <p class="recommendation-summary">${escapeHtml(ANALYSIS_PRESENTATION?.summarizeReasoning(result.analysis) || numericSummary(payload.math))}</p>
-      ${localNote}
-      ${renderPromptDebug(result.debug)}
-    `;
-    $("aiModel").textContent = String(result.model || "").split("/").pop();
-    $("aiReasoning").innerHTML = `
-      ${coachRowsHtml(payload.math)}
-      <details class="full-reasoning">
-        <summary>Full AI Reasoning</summary>
-        <div class="llm-analysis">${markdownToHtml(result.analysis)}</div>
-      </details>
-    `;
+    verdictState.ai = ANALYSIS_PRESENTATION?.extractRecommendedAction(result.analysis, decisionNode.legalActions) || null;
+    modelTrailHtml(result);
+    renderPromptDebug(result.debug);
     renderSummaryVerdict();
     if ($("solverResult")?.querySelector(".agreement-badge") || verdictState.solver) {
       $("solverResult").querySelector(".agreement-badge")?.remove();
@@ -2381,16 +2602,6 @@ async function renderLLMReasoning(payload, decisionNode, action, className, requ
     });
   } catch (error) {
     if (requestId !== analysisRequestId) return;
-    const fallback = $("recommendation").querySelector(".local-fallback")?.innerHTML || "";
-    $("recommendation").innerHTML = `
-      <div class="recommendation-head">
-        ${verdictBadgeHtml(action, "verdict-badge is-large")}
-        <p class="eyebrow">${decisionNode.title} · Local heuristic</p>
-      </div>
-      <p class="llm-status warning">AI reasoning is temporarily unavailable. The local analysis remains available.</p>
-      <div class="llm-analysis local-fallback">${fallback}</div>
-    `;
-    $("aiReasoning").innerHTML = `<p class="llm-status warning">Coach reasoning is temporarily unavailable.</p>`;
     renderSummaryVerdict();
     appendDeveloperDiagnostic("AI reasoning error", error.message);
   }
@@ -2405,7 +2616,7 @@ async function renderHarringtonAnalysis(payload, requestId, signal) {
 
     target.innerHTML = `
       ${modelTrailHtml(result)}
-      ${strategyBlurbHtml(result.analysis, "Full Harrington analysis")}
+      ${strategyDecisionHtml(ANALYSIS_PRESENTATION?.extractDecision(result.analysis, payload.math?.legalActions), result.analysis, "Full Harrington analysis")}
       <details class="context-details">
         <summary>Retrieved Harrington context</summary>
         ${renderRetrievedHarringtonContext(result.retrievedContext)}
@@ -2434,9 +2645,12 @@ async function renderPokerSkillAnalysis(payload, requestId, signal) {
       .filter((title) => title && !/output contract/i.test(title))
       .map((title) => `<span class="chip">${escapeHtml(title.charAt(0) + title.slice(1).toLowerCase())}</span>`)
       .join("");
+    const decision = ANALYSIS_PRESENTATION?.extractDecision(result.analysis, payload.math?.legalActions);
+    verdictState.skill = decision?.action || null;
+    renderSummaryVerdict();
     target.innerHTML = `
       ${modelTrailHtml(result)}
-      ${strategyBlurbHtml(result.analysis, "Full skill-grounded analysis")}
+      ${strategyDecisionHtml(decision, result.analysis, "Full skill-grounded analysis")}
       ${skillChips ? `<div class="chip-row" aria-label="Skill layers used">${skillChips}</div>` : ""}
       <details class="context-details pokerskill-details">
         <summary>Selected PokerSkill-style layers</summary>
@@ -2454,49 +2668,95 @@ async function renderPokerSkillAnalysis(payload, requestId, signal) {
   }
 }
 
-// The range request adds this hand's locked earlier-street ranges to the analysis payload.
+// Everything this hand already established about villain's range at this decision: the preflop range,
+// streets to reuse verbatim (an exact earlier analysis of the same villain line, or one villain hasn't
+// acted since), and bounds from other points in the hand - ceilings from a shorter line on a street,
+// floors from a longer one (a later decision analyzed or prefetched first).
+function rangeBoundsFor(spot) {
+  const street = spot?.street;
+  const lockedPreflop = PREFLOP_RANGE_LOCK?.get(spot) || null;
+  const currentStreetLock = STREET_RANGE_LOCK?.get(spot, street);
+  // Bounds go to the server as plain ranges; only a range reused verbatim (a lock) brings its reasons along.
+  const ceilingsWithReasons = STREET_RANGE_LOCK?.ceilings?.(spot, street) || [];
+  const floorsWithReasons = STREET_RANGE_LOCK?.floors?.(spot, street) || [];
+  const ceilings = ceilingsWithReasons.map(({ street: s, rangeText, unchanged }) => ({ street: s, rangeText, unchanged }));
+  const floors = floorsWithReasons.map(({ street: s, rangeText, unchanged }) => ({ street: s, rangeText, unchanged }));
+  const withReasons = (lock) => (lock?.narrowing ? { narrowing: lock.narrowing, reasoning: lock.reasoning || "" } : {});
+  const exactLocks = [
+    ...(STREET_RANGE_LOCK?.priorLocks(spot, street) || []),
+    ...(currentStreetLock ? [{ street, rangeText: currentStreetLock.rangeText, ...withReasons(currentStreetLock) }] : []),
+  ];
+  const streetLocks = [
+    ...exactLocks,
+    ...[...ceilingsWithReasons, ...floorsWithReasons]
+      .filter((bound) => bound.unchanged && !exactLocks.some((lock) => lock.street === bound.street))
+      .filter((bound, index, list) => list.findIndex((other) => other.street === bound.street) === index)
+      .map((bound) => ({ street: bound.street, rangeText: bound.rangeText, ...withReasons(bound) })),
+  ].sort((a, b) => ["flop", "turn", "river"].indexOf(a.street) - ["flop", "turn", "river"].indexOf(b.street));
+  return { lockedPreflop, streetLocks, ceilings, floors };
+}
+
+// The range request carries this hand's established ranges so the model builds on them.
 function buildRangePayload(payload) {
   const decisionSpot = RANGE_DECISION_CONTEXT ? RANGE_DECISION_CONTEXT.buildRangeDecisionContext(payload.spot) : payload.spot;
-  const lockedPreflop = PREFLOP_RANGE_LOCK?.get(payload.spot) || null;
-  // Earlier streets already analyzed in this hand (flop/turn) are locked the same way preflop is, so
-  // jumping ahead to turn/river doesn't let the LLM silently re-roll a different flop range.
-  const priorStreetLocks = STREET_RANGE_LOCK?.priorLocks(payload.spot, payload.spot?.street) || [];
+  const { lockedPreflop, streetLocks, ceilings, floors } = rangeBoundsFor(payload.spot);
   return {
     ...payload,
     spot: {
       ...decisionSpot,
       ...(lockedPreflop ? { lockedPreflopRange: { rangeText: lockedPreflop.rangeText } } : {}),
-      ...(priorStreetLocks.length ? { lockedPriorStreetRanges: priorStreetLocks } : {}),
+      ...(streetLocks.length ? { lockedPriorStreetRanges: streetLocks } : {}),
+      ...(ceilings.length ? { rangeCeilings: ceilings } : {}),
+      ...(floors.length ? { rangeFloors: floors } : {}),
     },
   };
 }
 
-function sanitizeRangeResult(result, rangePayload, context) {
-  if (!LLM_RANGE_GUARD) return result.rangeInterpretation;
-  return LLM_RANGE_GUARD.sanitizeLLMRangeInterpretation({
-    interpretation: result.rangeInterpretation || {},
-    parseRange,
-    knownCardsThroughStreet,
-    heroCards: context.heroCards || [],
-    boardCards: context.boardCards || [],
-    comboFactCheck: analyzeFlopCombo,
-    freezeCurrentStreetToPriorRange: rangePayload.spot?.freezeToPriorStreetRange === true,
-  });
-}
-
-function rememberRangeLocks(payload, rangePayload, result, interpretation) {
-  // Reuse this hand's preflop range on later streets so re-analysis doesn't re-roll villain's opening range.
-  if (!rangePayload.spot?.lockedPreflopRange && result.rangeWidth?.withinBand !== false) {
-    const preflopText = (result.rangeInterpretation?.streetSummaries || []).find((item) => item?.street === "preflop")?.rangeText ||
-      (result.rangeInterpretation?.street === "preflop" ? result.rangeInterpretation.rangeText : "");
+// Sanitizes a range response and records what it established. Bounds are read again now, not taken
+// from the request: the prefetch chain and the foreground request run in parallel, so another response
+// for this hand may have landed while this one was in flight. Whichever lands first sets the range and
+// later ones are made to agree with it, so two views of the same villain line can never differ.
+function settleRangeResult(payload, rangePayload, result, context) {
+  let interpretation = result.rangeInterpretation;
+  if (LLM_RANGE_GUARD) {
+    const bounds = rangeBoundsFor(payload.spot);
+    interpretation = LLM_RANGE_GUARD.sanitizeLLMRangeInterpretation({
+      interpretation: result.rangeInterpretation || {},
+      parseRange,
+      knownCardsThroughStreet,
+      heroCards: context.heroCards || [],
+      boardCards: context.boardCards || [],
+      comboFactCheck: analyzeFlopCombo,
+      freezeCurrentStreetToPriorRange: rangePayload.spot?.freezeToPriorStreetRange === true,
+      locks: [
+        ...(bounds.lockedPreflop ? [{ street: "preflop", rangeText: bounds.lockedPreflop.rangeText }] : []),
+        ...bounds.streetLocks,
+      ],
+      ceilings: bounds.ceilings,
+      floors: bounds.floors,
+    });
+  }
+  // The preflop range shown is the one this hand keeps, even when its width is outside the expected band
+  // (the band warning still shows): locking only in-band ranges let one decision display a preflop range
+  // that every later decision contradicted. remember() keeps the first one.
+  // Never keep a range that reads as zero combos (unparseable text): locking it would empty every later
+  // street for the rest of the hand.
+  const readable = (text) => Boolean(text) && parseRange(text, []).combos.length > 0;
+  const preflopText = (interpretation?.streetSummaries || []).find((item) => item?.street === "preflop")?.rangeText ||
+    (interpretation?.street === "preflop" ? interpretation.rangeText : "");
+  if (readable(preflopText)) {
     PREFLOP_RANGE_LOCK?.remember(payload.spot, preflopText, { analysisId: payload.analysisId, percent: result.rangeWidth?.percent ?? null });
   }
-  // Same idea for flop/turn: lock in whatever this analysis settled on for each street it covered
-  // (using the sanitized interpretation, not the raw LLM output) so a later street reuses it verbatim.
+  // Same for flop/turn/river: what this analysis showed is what later decisions build on.
   for (const summary of interpretation?.streetSummaries || []) {
-    if (!summary?.street || summary.street === "preflop" || !summary.rangeText) continue;
-    STREET_RANGE_LOCK?.remember(payload.spot, summary.street, summary.rangeText, { analysisId: payload.analysisId });
+    if (!summary?.street || summary.street === "preflop" || !readable(summary.rangeText)) continue;
+    STREET_RANGE_LOCK?.remember(payload.spot, summary.street, summary.rangeText, {
+      analysisId: payload.analysisId,
+      // Keep the per-group reasons with the range, so a later street that reuses it can still show why.
+      ...(Array.isArray(summary.narrowing?.keptGroups) ? { narrowing: summary.narrowing, reasoning: summary.reasoning || "" } : {}),
+    });
   }
+  return interpretation;
 }
 
 async function renderLLMRangeInterpretation(payload, context, requestId, signal) {
@@ -2510,8 +2770,7 @@ async function renderLLMRangeInterpretation(payload, context, requestId, signal)
   try {
     const result = await postJsonPrefetched("/api/range/interpret", rangePayload, signal);
     if (requestId !== analysisRequestId) return null;
-    const interpretation = sanitizeRangeResult(result, rangePayload, context);
-    rememberRangeLocks(payload, rangePayload, result, interpretation);
+    const interpretation = settleRangeResult(payload, rangePayload, result, context);
     currentRangeViews.llm = {
       status: "ready",
       interpretation,
@@ -2592,24 +2851,18 @@ function resetResultPanels() {
   $("actionBuckets").innerHTML = "";
   $("rangeDetails").innerHTML = "";
   activeRangeEvolution = null;
-  $("recommendation").innerHTML = `
-    <p class="eyebrow">Recommendation</p>
-    <h2>Waiting for a spot</h2>
-    <p>Enter the action and click analyze.</p>
-  `;
+  resetAnalysisStreetView();
   $("equityMetric").textContent = "-";
   $("potOddsMetric").textContent = "-";
   $("evLabel").textContent = "Call EV";
   $("evMetric").textContent = "-";
   $("confluenceMetric").textContent = "-";
   $("calculationLog").textContent = "The calculation trail will appear here.";
-  verdictState = { ai: null, local: null, solver: null, solverConfidence: null, node: "" };
+  verdictState = { ai: null, skill: null, solver: null, solverConfidence: null, node: "" };
   $("summaryContext").textContent = "Enter the action and click analyze.";
   renderSummaryVerdict();
   $("equityBuckets").innerHTML = `<p class="ws-empty">Ahead, behind, and near-flip combos appear after analysis.</p>`;
   $("boardTextureSummary").innerHTML = `<p class="ws-empty">Structural observations appear after analysis.</p>`;
-  $("aiReasoning").innerHTML = `<p class="ws-empty">Run an analysis to generate the coach's reasoning.</p>`;
-  $("aiModel").textContent = "";
   $("rangeHeadLabel").textContent = "Villain estimated range";
   $("solverResult").innerHTML = `<span>TexasSolver</span><strong>Not run yet</strong><small>The solver checks flop, turn, and river spots.</small>`;
   analysisTabs?.setBusy("ai", false);
@@ -2649,6 +2902,7 @@ function resetActiveHand() {
   screenshotImportGeneration += 1;
   analysisRequestId += 1;
   cancelImportedAnalysisPrefetch();
+  cancelImportedRequestPrefetch();
   importedAnalysisCache?.clear();
   importedHand = null;
   currentVisionImportId = null;
@@ -2731,9 +2985,9 @@ function setMode(mode) {
 
 const ANALYSIS_SURFACE_IDS = [
   "rangeComboCount", "rangeText", "llmRangeMeta", "rangeTimeline", "rangeBreakdown", "actionBuckets",
-  "rangeDetails", "heroCardA", "heroCardB", "boardCardRow", "recommendation", "equityMetric",
+  "rangeDetails", "heroCardA", "heroCardB", "boardCardRow", "equityMetric",
   "potOddsMetric", "evMetric", "confluenceMetric", "calculationLog", "harringtonAnalysis", "pokerSkillAnalysis",
-  "equityBuckets", "boardTextureSummary", "evLabel", "rangeSteps", "rangeHeadLabel", "aiModel", "aiReasoning", "solverResult", "summaryContext", "summaryVerdict",
+  "equityBuckets", "boardTextureSummary", "evLabel", "rangeSteps", "rangeHeadLabel", "solverResult", "summaryContext", "summaryVerdict",
 ];
 
 function captureAnalysisSurface() {
@@ -2755,6 +3009,7 @@ function saveAnalysisSurface(mode) {
 }
 
 function restoreAnalysisSurface(mode) {
+  resetAnalysisStreetView();
   const session = mode === "import" ? importSession : manualSession;
   const key = session?.selectedDecision?.key || "current";
   const snapshot = session?.analysisState?.byDecision?.[key];
@@ -2940,6 +3195,7 @@ async function importScreenshotFile(file) {
     },
   });
   cancelImportedAnalysisPrefetch();
+  cancelImportedRequestPrefetch();
   importCardReviewRequested = false;
   setImportState("reading");
   $("importStatus").textContent = "Reading screenshot...";
@@ -3348,6 +3604,7 @@ function renderImportedHand() {
   }
   renderImportedDecisions(heroName);
   refreshImportedCardValidity();
+  startImportedRequestPrefetch();
 }
 
 function renderImportedDecisions(heroName) {
@@ -3698,6 +3955,12 @@ function aliasPrefetchedRange(spotPayload, sentPayload, result, interpretation, 
     const sentLock = (sentPayload.spot?.lockedPriorStreetRanges || []).find((item) => item.street === lock.street)?.rangeText;
     if (lock.rangeText !== (sentLock || established.get(lock.street))) return;
   }
+  // A ceiling that appeared only after this response is one this response set for its own street; any
+  // other new ceiling means the foreground request would be bounded differently, so don't alias.
+  const sentCeilings = new Map((sentPayload.spot?.rangeCeilings || []).map((item) => [item.street, item.rangeText]));
+  for (const ceiling of lockedPayload.spot?.rangeCeilings || []) {
+    if (ceiling.rangeText !== (sentCeilings.get(ceiling.street) || established.get(ceiling.street))) return;
+  }
   registerPrefetchedResponse("/api/range/interpret", lockedPayload, promise);
 }
 
@@ -3752,8 +4015,7 @@ function startImportedRequestPrefetch() {
       registerPrefetchedResponse("/api/range/interpret", rangePayload, promise);
       const result = await promise;
       if (controller.signal.aborted) return;
-      const interpretation = sanitizeRangeResult(result, rangePayload, context);
-      rememberRangeLocks(spotPayload, rangePayload, result, interpretation);
+      const interpretation = settleRangeResult(spotPayload, rangePayload, result, context);
       aliasPrefetchedRange(spotPayload, rangePayload, result, interpretation, promise);
     }).catch(() => {});
   }

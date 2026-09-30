@@ -141,4 +141,21 @@ const baseConfig = {
   assert.equal(result.provider, "gemini");
 }
 
+{
+  // An overloaded model must hand off to the next one instead of abandoning the provider.
+  const tried = [];
+  const result = await callNebiusWithFailover({
+    models: ["busy-model", "spare-model"],
+    apiKey: "test",
+    prompt: "p",
+    callModel: async ({ model }) => {
+      tried.push(model);
+      if (model === "busy-model") throw new Error("This model is currently experiencing high demand. Spikes in demand are usually temporary.");
+      return { text: "{}", completion: { finishReason: "stop" } };
+    },
+  });
+  assert.deepEqual(tried, ["busy-model", "spare-model"]);
+  assert.equal(result.model, "spare-model");
+}
+
 console.log("nebiusReasoningProvider tests passed");

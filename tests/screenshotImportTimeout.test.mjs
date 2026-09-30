@@ -40,9 +40,12 @@ function validVisionResponse() {
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
+// The first request is the main extraction; the focused hero-card re-read that follows has its own cap.
 globalThis.fetch = async (_url, options = {}) => {
-  observedSignal = options.signal || null;
-  observedBody = JSON.parse(options.body || "{}");
+  if (!observedBody) {
+    observedSignal = options.signal || null;
+    observedBody = JSON.parse(options.body || "{}");
+  }
   return validVisionResponse();
 };
 

@@ -44,6 +44,10 @@ export function loadConfig(rootDir = process.cwd()) {
     // No Nebius fallback by default: Nemotron-3-Nano spends its whole token budget reasoning on the range
     // prompt and returns no content, so a Super failure goes straight to Gemini instead.
     nebiusFallbackModels: getList("NEBIUS_FALLBACK_MODELS", ""),
+    // Postflop range group decisions only. On the group prompt GLM-5.3 returned valid JSON 12/12 at ~5s
+    // with near-identical answers run to run; nemotron-3-super returned broken JSON on half of them.
+    nebiusRangeModel: get("NEBIUS_RANGE_MODEL", "zai-org/GLM-5.3"),
+    nebiusRangeFallbackModels: getList("NEBIUS_RANGE_FALLBACK_MODELS", "zai-org/GLM-5.3-Flash"),
     geminiApiKey: get("GEMINI_API_KEY"),
     geminiModel: get("GEMINI_MODEL", "gemini-2.5-flash"),
     geminiFallbackModels: getList(
@@ -65,6 +69,9 @@ export function loadConfig(rootDir = process.cwd()) {
     importEngineV2Enabled: getBool("IMPORT_ENGINE_V2_ENABLED"),
     importEngineV2Sites: getList("IMPORT_ENGINE_V2_SITES", "Natural8"),
     importEngineV2Debug: getBool("IMPORT_ENGINE_V2_DEBUG"),
+    // Postflop ranges come from per-group keep/drop decisions on code-computed hand groups instead of
+    // model-written rangeText (see src/analysis/rangeGroups.js). Set to false to go back to one big call.
+    rangeGroupDecisions: getBool("RANGE_GROUP_DECISIONS", "true"),
     port: Number.parseInt(get("PORT", "4175"), 10),
     // Render/other hosts need 0.0.0.0; local dev stays loopback-only.
     host: get("HOST", process.env.RENDER ? "0.0.0.0" : "127.0.0.1"),

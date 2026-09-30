@@ -131,6 +131,87 @@
     return summarizeReasoning(text, { maxSentences, maxLength });
   }
 
+  // Section names the Harrington and PokerSkill output contracts use; any of them ends the Recommendation section.
+  const CONTRACT_HEADING = /^(recommend(?:ation|ed action)|situation|key evidence|skill layers(?: used)?|candidate actions(?:\s*\([^)]*\))?|recorded action comparison|confidence(?:\s*\/\s*caveats)?|caveats)\s*(\**)\s*(:?)\s*(?:\*\*(?=\s|$))?\s*(.*)$/i;
+  const RECOMMENDATION_NAME = /^recommend(?:ation|ed action)\b/i;
+
+  // "## Recommendation", "### 4. Recommendation", "4. **Recommendation**: Bet ...", "**Recommendation:**" -> the section name and
+  // any text that follows it on the same line, or null when the line is not a section heading.
+  function sectionHeading(line) {
+    const marked = /^\s*(?:#{1,6}\s|\**\s*\d+[.)]|\*\*)/.test(line);
+    const match = line.replace(/^\s*#{0,6}\s*\**\s*(?:\d+[.)]\s*)?\**\s*/, "").match(CONTRACT_HEADING);
+    if (!match) return null;
+    const [, name, stars, colon, rest] = match;
+    if (!colon && !(marked && (stars || !rest.trim()))) return null;
+    return { name, rest: rest.trim() };
+  }
+
+  // The markdown body of the Recommendation section, including text on the heading line itself.
+  function recommendationWriteup(text) {
+    const lines = String(text || "").split(/\r?\n/);
+    let body = null;
+    for (const line of lines) {
+      const heading = sectionHeading(line);
+      if (body === null) {
+        if (heading && RECOMMENDATION_NAME.test(heading.name)) body = heading.rest ? [heading.rest] : [];
+        continue;
+      }
+      if (heading) break;
+      body.push(line);
+    }
+    return body ? body.join("\n").trim() : "";
+  }
+
+  const DASH = "[-–‑—]";
+  const NUMBER = "\\d+(?:\\.\\d+)?";
+  const POT_FRACTIONS = [
+    [/\bhalf[\s-‑]*(?:pot\s*)?to[\s-‑]*(?:two|2)[\s-‑]*thirds?[\s-‑]*(?:of\s*the\s*)?pot\b/i, "1/2–2/3 pot"],
+    [/\bhalf[\s-‑]*pot\s*to\s*(?:full[\s-‑]*pot|pot[\s-‑]*siz(?:e|ed)?)\b/i, "1/2 pot–pot"],
+    [/(?:\b(?:two|2)[\s-‑]*thirds?|⅔|\b2\/3)[\s-‑]*(?:of\s*the\s*)?pot\b/i, "2/3 pot"],
+    [/(?:\b(?:three|3)[\s-‑]*quarters?|¾|\b3\/4)[\s-‑]*(?:of\s*the\s*)?pot\b/i, "3/4 pot"],
+    [/(?:\bhalf|½|\b1\/2)[\s-‑]*(?:(?:of\s*)?the\s*)?pot\b/i, "Half pot"],
+    [/(?:\b(?:one[\s-‑]*)?third|⅓|\b1\/3)[\s-‑]*(?:of\s*the\s*)?pot\b/i, "1/3 pot"],
+    [/(?:\b(?:one[\s-‑]*)?quarter|¼|\b1\/4)[\s-‑]*(?:of\s*the\s*)?pot\b/i, "1/4 pot"],
+    [/\bover[\s-‑]*bet\b/i, "Overbet"],
+    [/\b(?:full[\s-‑]*pot|pot[\s-‑]*siz(?:e|ed)?)\b/i, "Pot"],
+  ];
+
+  // Bet/raise size named in the recommendation, e.g. "~20–22 bb", "Half pot · ~15–16 bb", "3/4 pot".
+  function extractSize(writeup) {
+    const plain = stripMarkdown(writeup).replace(/\s+/g, " ");
+    const lead = splitSentences(plain).slice(0, 2).join(" ");
+    const percent = lead.match(new RegExp(`(${NUMBER})\\s*%\\s*(?:of\\s*(?:the\\s*)?)?pot`, "i"))?.[1] ||
+      lead.match(/\b0?\.(\d{1,2})\s*[×x]\s*(?:the\s*)?pot\b/i)?.[1]?.padEnd(2, "0");
+    const fraction = percent ? `${Number(percent)}% pot` : POT_FRACTIONS.find(([pattern]) => pattern.test(lead))?.[1] || "";
+    const approx = "(~|≈|approx(?:imately)?\\.?|about|around|roughly)?\\s*";
+    const range = lead.match(new RegExp(`${approx}(${NUMBER})\\s*(?:${DASH}|to)\\s*(${NUMBER})\\s*(bb|big blinds)?`, "i"));
+    const single = lead.match(new RegExp(`${approx}(${NUMBER})\\s*(?:bb|big blinds)\\b`, "i"));
+    let amount = "";
+    if (range && (range[1] || range[4])) amount = `${range[1] ? "~" : ""}${range[2]}–${range[3]} bb`;
+    else if (single) amount = `${single[1] ? "~" : ""}${single[2]} bb`;
+    return [fraction, amount].filter(Boolean).join(" · ");
+  }
+
+  // The recommended action, its size when betting or raising, and the recommendation write-up.
+  function extractDecision(text, legalActions = []) {
+    const writeup = recommendationWriteup(text);
+    const legal = (legalActions || []).map((action) => String(action).toLowerCase().replace("-", ""));
+    const allowed = (word) => word && (!legal.length || legal.includes(word.toLowerCase().replace("-", "")));
+    const plain = stripMarkdown(writeup);
+    const firstSentence = splitSentences(plain.replace(/\s+/g, " "))[0] || "";
+    const candidates = [
+      writeup.match(BOLD_ACTION)?.[1],
+      plain.match(new RegExp(`\\baction\\s*:\\s*(${ACTION_WORDS.join("|")})\\b`, "i"))?.[1],
+      plain.match(new RegExp(`^\\W*(${ACTION_WORDS.join("|")})\\b`, "i"))?.[1],
+      plain.match(VERDICT_PHRASE)?.[1],
+      firstSentence.match(ACTION_PATTERN)?.[1],
+    ];
+    const found = candidates.find(allowed);
+    const action = found ? canonicalAction(found) : extractRecommendedAction(text, legalActions);
+    const size = action && actionTone(action) === "aggressive" && action !== "All-in" ? extractSize(writeup) : "";
+    return { action, size, writeup };
+  }
+
   const SUIT_NAME = { c: "clubs", d: "diamonds", h: "hearts", s: "spades" };
   const RANK_NUMBER = { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, T: 10, J: 11, Q: 12, K: 13, A: 14 };
 
@@ -209,6 +290,8 @@
 
   return {
     extractRecommendedAction,
+    extractDecision,
+    recommendationWriteup,
     summarizeReasoning,
     extractSection,
     blurb,

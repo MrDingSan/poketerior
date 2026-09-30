@@ -136,3 +136,43 @@ testUsesExtractedShortStackAndAntesForAllInReplay();
   const converted = adapter.fromImportedHand(h, { heroName: "Hero" });
   assert.equal(converted.unresolved.filter((entry) => entry.key.startsWith("turn")).length, 0, JSON.stringify(converted.unresolved));
 })();
+
+// Hand-History-1790497998567: CO posted a big blind to join ("AUTOBB"), everyone folded to CO, CO checked,
+// Hero (BB) raised and CO called. The post must count as CO's wager, so the check is legal and every
+// later decision stays selectable.
+{
+  const autoBb = adapter.fromImportedHand({
+    heroName: "hero",
+    heroHand: ["Jh", "Jc"],
+    board: { flop: ["Qd", "8h", "4h"], turn: "Qc", river: "7c" },
+    players: [
+      { name: "sb", position: "SB", stackBb: 151 },
+      { name: "hero", position: "BB", stackBb: 70.2, isHero: true },
+      { name: "co", position: "CO", stackBb: 100 },
+      { name: "utg", position: "UTG", stackBb: 100 },
+      { name: "mp", position: "MP", stackBb: 113 },
+      { name: "btn", position: "BTN", stackBb: 249 },
+    ],
+    streets: {
+      preflop: {
+        actions: [
+          { actor: "sb", position: "SB", action: "blind", amountBb: 0.5 },
+          { actor: "hero", position: "BB", action: "blind", amountBb: 1 },
+          { actor: "co", position: "CO", action: "blind", amountBb: 1 },
+          { actor: "utg", position: "UTG", action: "fold" },
+          { actor: "mp", position: "MP", action: "fold" },
+          { actor: "co", position: "CO", action: "check" },
+          { actor: "btn", position: "BTN", action: "fold" },
+          { actor: "sb", position: "SB", action: "fold" },
+          { actor: "hero", position: "BB", action: "raise", amountBb: 3.5 },
+          { actor: "co", position: "CO", action: "call", amountBb: 2.5 },
+        ],
+      },
+      flop: { actions: [{ actor: "hero", position: "BB", action: "bet", amountBb: 4.3 }, { actor: "co", position: "CO", action: "call", amountBb: 4.3 }] },
+    },
+  }, { heroName: "hero" });
+  assert.deepEqual(autoBb.unresolved, []);
+  assert.equal(autoBb.preflopState.potUnits, 2 * (0.5 + 3.5 + 3.5));
+  assert.ok(autoBb.actionIndex["flop:0"], "decisions after the posted blind stay available");
+  console.log("posted-blind import checks passed");
+}

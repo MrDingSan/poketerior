@@ -37,3 +37,14 @@ assert.equal(rangeWidth("22+,A2s+,K2s+,Q2s+,J2s+,T2s+,92s+,82s+,72s+,62s+,52s+,4
 assert.equal(Math.round(rangeWidth("22+,A2s+,KTs+,QTs+,JTs,T9s,98s,87s,76s,65s,54s,43s,32s,AJo+,KQo").percent), 17);
 
 console.log("range notation checks passed");
+
+// A big blind checking its option in a limped pot came back as "all hands"; unparsed, it read as zero
+// combos and emptied every later street. Words for an unrestricted range mean every starting hand.
+for (const words of ["all hands", "any two", "Any Two Cards", "random", "100%"]) {
+  const parsed = parseRange(words, []);
+  assert.equal(parsed.combos.length, 1326, words);
+  assert.equal(parsed.classes.length, 169, words);
+  assert.deepEqual([...parsed.unrecognized], [], words);
+}
+assert.equal(parseRange("allin", []).combos.length, 0, "only whole-token matches");
+console.log("unrestricted-range word checks passed");

@@ -107,12 +107,21 @@
       .filter((action) => action.action === "ante" && Number.isFinite(Number(action.amountBb)))
       .reduce((total, action) => total + Number(action.amountBb), 0);
     const deadPotUnits = PREFLOP.toUnits(deadPotBb);
+    // A blind row from a seat other than SB/BB is a live post (CoinPoker "AUTOBB"); dropping it would make
+    // that player's later check look illegal and block every decision after it.
+    const postUnitsByPosition = {};
+    for (const action of hand.streets?.preflop?.actions || []) {
+      const position = builderPosition(actorPosition(hand, action));
+      if (action.action !== "blind" || !position || ["SB", "BB"].includes(position) || !Number.isFinite(Number(action.amountBb))) continue;
+      postUnitsByPosition[position] = (postUnitsByPosition[position] || 0) + PREFLOP.toUnits(Number(action.amountBb));
+    }
     let preflopState = PREFLOP.createInitialState({
       settings: { gameType: "6max", startingStackBb, opponentProfile: options.opponentProfile || "loose" },
       heroPosition: builderPosition(hero?.position) || "SB",
       heroCards: hand.heroHand || [],
       stackUnitsByPosition,
       deadPotUnits,
+      postUnitsByPosition,
     });
     const streetPotsBb = { preflop: preflopState.potUnits / 2 };
     const unresolved = [];

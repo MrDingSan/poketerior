@@ -2467,8 +2467,9 @@ input[readonly] {
 .brand-i {
   position: relative;
   display: inline-block;
-  width: 0.23em;
-  height: 0.72em;
+  /* A letter stroke's width, not a thick bar — the spade is the dot, not a flag on a pole. */
+  width: 0.14em;
+  height: 0.56em;
   /* The wordmark's tight letter-spacing (-0.065em) pulls the neighboring "r" and "o" right up
      against this glyph; the small 0.015em margin wasn't enough to counter that, so the bar and
      spade read as jammed into the surrounding letters. */
@@ -2485,11 +2486,13 @@ input[readonly] {
 .brand-i .brand-spade {
   position: absolute;
   z-index: 1;
-  top: -0.62em;
+  /* A dot's-width gap above the stem, like the "i" it replaces, instead of sitting almost flush
+     on top of it (which read as one fused arrow shape rather than a letter plus its dot). */
+  top: -0.95em;
   left: 50%;
   width: auto;
   color: var(--accent);
-  font-size: 0.38em;
+  font-size: 0.34em;
   line-height: 1;
   transform: translateX(-50%);
 }

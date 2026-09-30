@@ -9,3 +9,4 @@ tmp
 .claude
 .superpowers
 *.DS_Store
+resources/test_screenshots

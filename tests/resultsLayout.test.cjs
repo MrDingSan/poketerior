@@ -21,7 +21,7 @@ function panelHtml(name) {
 const placement = {
   ranges: ["rangeComboCount", "rangeText", "llmRangeMeta", "rangeTimeline", "rangeBreakdown", "actionBuckets", "rangeDetails"],
   equity: ["equityMetric", "potOddsMetric", "evMetric", "confluenceMetric", "equityBuckets", "boardTextureSummary"],
-  ai: ["recommendation", "aiReasoning", "harringtonAnalysis", "pokerSkillAnalysis"],
+  ai: ["harringtonAnalysis", "pokerSkillAnalysis"],
   breakdown: ["calculationLog", "solverResult", "developerDiagnostics"],
 };
 for (const [panel, ids] of Object.entries(placement)) {
@@ -30,6 +30,8 @@ for (const [panel, ids] of Object.entries(placement)) {
   }
 }
 assert.doesNotMatch(html, /harrington-panel|pokerskill-panel/, "style analyses must not render outside the AI Analysis tab");
+assert.doesNotMatch(html, /id="recommendation"|id="aiReasoning"/, "the AI tab holds only the Harrington and skill-grounded cards");
+assert.match(panelHtml("ai"), /class="tab-grid two-up"/, "the two strategy cards share one row");
 assert.match(workspaceCss, /\.tab-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/, "tab grids must ignore content-based minimum widths");
 assert.match(workspaceCss, /overflow-wrap:\s*anywhere/, "long range and calculation text must wrap inside its card");
 assert.ok(html.indexOf("analysis-workspace.css") > html.indexOf("poketerior-dashboard.css"), "workspace styles must load after the dashboard cascade");
@@ -51,7 +53,7 @@ assert.match(panelHtml("ranges"), /class="ws-card span-2">\s*<div class="ws-card
 assert.match(panelHtml("ranges"), /class="ws-card">\s*<div class="ws-card-head"><span>Action buckets/, "the action-bucket matrix is a narrow column next to range evolution, not a full-width row");
 assert.match(workspaceCss, /max-width:\s*1050px\)\s*\{[^}]*\.stat-card,[^}]*\.three-up > \.ai-card:last-child\s*\{\s*grid-column:\s*1 \/ -1/, "in the two-column layout an odd card spans the row instead of leaving half of it empty");
 assert.match(workspaceCss, /\.calculation-log\s*\{[^}]*columns:\s*2/, "the calculation trail uses two balanced columns");
-assert.match(workspaceCss, /\.equity-buckets \.combo-buckets\s*\{[^}]*repeat\(3/, "the three hand groups sit side by side");
+assert.match(workspaceCss, /\.equity-buckets \.combo-buckets\s*\{[^}]*repeat\(4/, "the four matchup buckets sit side by side");
 
 assert.ok(
   html.indexOf("providerAttribution.js") < html.indexOf("app.js"),

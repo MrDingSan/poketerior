@@ -74,9 +74,10 @@
         const stack = modeled ? modeled.stackUnits / 10 : player.stackBb;
         const holeCards = player.isHero
           ? `<span class="import-seat-cards">${(source.heroHand || []).map(cardMarkup).join("")}</span>`
-          : '<span class="import-seat-cards"><span class="mini-card card-back" aria-hidden="true"></span><span class="mini-card card-back" aria-hidden="true"></span></span>';
+          : '<span class="seat-card-backs" aria-hidden="true"><i></i><i></i></span>';
         const role = player.isHero ? "Hero" : "Villain";
-        return `<div class="postflop-seat postflop-seat--${escapeHtml(position)}${player.isHero ? " is-hero" : ""}">${holeCards}<strong>${role}</strong><small>${escapeHtml(player.position || "Unknown")}</small><span>${stack == null ? "Stack unknown" : `${stack} bb`}</span></div>`;
+        const dealer = position === "btn" ? '<span class="dealer-button" aria-label="Dealer button">D</span>' : "";
+        return `<div class="postflop-seat postflop-seat--${escapeHtml(position)}${player.isHero ? " is-hero" : ""}">${holeCards}<span class="seat-avatar" aria-hidden="true">${escapeHtml(position.toUpperCase())}</span><span class="seat-plate"><strong>${role} <small>(${escapeHtml(player.position || "Unknown")})</small></strong><span class="seat-stack">${stack == null ? "Stack unknown" : `${stack} bb`}</span></span>${dealer}</div>`;
       }).join("")}</div>
     </section>`;
   }

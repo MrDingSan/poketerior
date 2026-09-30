@@ -58,7 +58,11 @@
         const hero = position === state.heroPosition;
         const status = player.folded ? " is-folded" : state.currentActor === position ? " is-acting is-current" : "";
         const chips = player.streetContributionUnits ? `<div class="felt-commitment"><i></i>${model.formatPostflopBb(player.streetContributionUnits)} bb</div>` : "";
-        return `<div class="postflop-seat postflop-seat--${position.toLowerCase()}${hero ? " is-hero" : ""}${status}"><strong>${hero ? "★ Hero" : position} <small>(${position})</small></strong>${hero ? `<div class="hero-hole-cards">${orderCards(state.heroCards).map(cardMarkup).join("")}</div>` : ""}<span>${model.formatPostflopBb(player.stackUnits)} bb${player.allin ? " · All-in" : ""}</span>${chips}</div>`;
+        const holeCards = hero
+          ? `<div class="hero-hole-cards">${orderCards(state.heroCards).map(cardMarkup).join("")}</div>`
+          : player.folded ? "" : '<span class="seat-card-backs" aria-hidden="true"><i></i><i></i></span>';
+        const dealer = position === "BTN" ? '<span class="dealer-button" aria-label="Dealer button">D</span>' : "";
+        return `<div class="postflop-seat postflop-seat--${position.toLowerCase()}${hero ? " is-hero" : ""}${status}">${holeCards}<span class="seat-avatar" aria-hidden="true">${position}</span><span class="seat-plate"><strong>${hero ? "★ Hero" : position} <small>(${position})</small></strong><span class="seat-stack">${model.formatPostflopBb(player.stackUnits)} bb${player.allin ? " · All-in" : ""}</span></span>${dealer}${chips}</div>`;
       }).join("");
     }
 

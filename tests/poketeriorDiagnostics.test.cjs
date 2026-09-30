@@ -20,6 +20,7 @@ assert.doesNotMatch(
 assert.doesNotMatch(app, /Asking Gemini/, "loading copy should not expose a provider name");
 assert.doesNotMatch(app, /Poker Coach/, "user-facing analysis copy should use the PokeTerior brand");
 assert.match(app, /class="full-reasoning"/, "the complete provider response should be progressively disclosed");
-assert.match(app, /summary>Full AI Reasoning<\/summary>/, "advanced users should have an explicit full-reasoning control");
+assert.match(app, /Full skill-grounded analysis/, "advanced users should have an explicit full-reasoning control");
+assert.match(app, /Full Harrington analysis/, "the Harrington card keeps its full-analysis control");
 
 console.log("PokeTerior diagnostic disclosure checks passed");

@@ -30,6 +30,7 @@ export async function callNebius({
     ? AbortSignal.any([controller.signal, signal])
     : controller?.signal || signal;
   let response;
+  let data;
   try {
     response = await fetchImpl(endpoint, {
       method: "POST",
@@ -46,11 +47,16 @@ export async function callNebius({
       }),
       signal: requestSignal,
     });
+    // Read the body before clearing the timer: a provider can send headers promptly and then stall on
+    // the body, and a timeout that only covered the headers would leave the request hanging forever.
+    data = await response.json().catch((error) => {
+      if (requestSignal?.aborted) throw requestSignal.reason || error;
+      return {};
+    });
   } finally {
     if (timer) clearTimeout(timer);
   }
 
-  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = data?.error?.message || data?.message || "Unknown Token Factory error";
     throw new Error(`Nebius Token Factory request failed with ${response.status}: ${detail}`);

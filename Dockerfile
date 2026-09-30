@@ -18,12 +18,16 @@ COPY scripts ./scripts
 RUN npm ci --omit=dev
 
 COPY . .
+# Run as the unprivileged `node` user; it must own logs/ for analysis logging.
+RUN mkdir -p logs && chown -R node:node /app
+USER node
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
-    PORT=10000 \
+    PORT=8080 \
     TEXAS_SOLVER_BINARY=/opt/texassolver/console_solver \
-    TEXAS_SOLVER_RESOURCES=/opt/texassolver/resources
+    TEXAS_SOLVER_RESOURCES=/opt/texassolver/resources \
+    TEXAS_SOLVER_TIMEOUT_MS=150000
 
-EXPOSE 10000
+EXPOSE 8080
 CMD ["node", "src/server/server.js"]

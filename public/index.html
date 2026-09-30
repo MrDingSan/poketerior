@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="./hand-stage.css" />
     <link rel="stylesheet" href="./analysis-workspace.css" />
     <link rel="stylesheet" href="./import-screen.css" />
+    <link rel="stylesheet" href="./poker-table.css" />
   </head>
   <body>
     <main class="app-shell">
@@ -421,6 +422,7 @@
             <button id="analysisTabAi" class="analysis-tab" type="button" role="tab" data-analysis-tab="ai" aria-controls="analysisPanelAi">AI Analysis</button>
             <button id="analysisTabBreakdown" class="analysis-tab" type="button" role="tab" data-analysis-tab="breakdown" aria-controls="analysisPanelBreakdown">Breakdown</button>
           </nav>
+          <div id="analysisStreetStrip" class="analysis-street-strip" role="group" aria-label="Street to view" hidden></div>
 
           <section id="analysisPanelRanges" class="analysis-panel tab-grid" role="tabpanel" data-analysis-panel="ranges" aria-labelledby="analysisTabRanges">
             <article class="ws-card span-2">
@@ -469,19 +471,11 @@
               <div class="ws-card-head"><span>Board texture</span></div>
               <div id="boardTextureSummary" class="board-texture-summary"><p class="ws-empty">Structural observations appear after analysis.</p></div>
             </article>
+            <div class="street-history-view" data-street-history="equity"></div>
           </section>
 
           <section id="analysisPanelAi" class="analysis-panel" role="tabpanel" data-analysis-panel="ai" aria-labelledby="analysisTabAi">
-            <div id="recommendation" class="recommendation ws-card">
-              <p class="eyebrow">Recommended Action</p>
-              <h2>Waiting for a spot</h2>
-              <p>Enter the action and click analyze.</p>
-            </div>
-            <div class="tab-grid three-up">
-              <article class="ws-card ai-card">
-                <div class="ws-card-head"><span>Coach reasoning</span><span id="aiModel" class="ws-model"></span></div>
-                <div id="aiReasoning" class="ai-reasoning"><p class="ws-empty">Run an analysis to generate the coach's reasoning.</p></div>
-              </article>
+            <div class="tab-grid two-up">
               <article class="ws-card ai-card harrington-card" aria-label="Harrington style analysis">
                 <div class="ws-card-head"><span>Harrington style</span></div>
                 <div id="harringtonAnalysis" class="harrington-analysis">
@@ -495,6 +489,7 @@
                 </div>
               </article>
             </div>
+            <div class="street-history-view" data-street-history="ai"></div>
           </section>
 
           <section id="analysisPanelBreakdown" class="analysis-panel tab-grid one-up" role="tabpanel" data-analysis-panel="breakdown" aria-labelledby="analysisTabBreakdown">
@@ -515,6 +510,7 @@
     </main>
 
     <script src="./rangeNotation.js"></script>
+    <script src="./handEquity.js"></script>
     <script src="./preflopRangeLock.js"></script>
     <script src="./streetRangeLock.js"></script>
     <script src="./actionPolicy.js"></script>
@@ -546,6 +542,7 @@
     <script src="./providerAttribution.js"></script>
     <script src="./analysisPresentation.js"></script>
     <script src="./analysisTabsView.js"></script>
+    <script src="./analysisStreetHistory.js"></script>
     <script src="./import-engine/types.js"></script>
     <script src="./import-engine/legacyAdapter.js"></script>
     <script src="./import-engine/adapters/registry.js"></script>

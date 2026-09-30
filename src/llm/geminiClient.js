@@ -23,6 +23,7 @@ export async function callGemini({
     ? AbortSignal.any([controller.signal, signal])
     : controller?.signal || signal;
   let response;
+  let data;
   try {
     response = await fetch(`${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
@@ -43,11 +44,16 @@ export async function callGemini({
       }),
       signal: requestSignal,
     });
+    // Read the body before clearing the timer: a provider can send headers promptly and then stall on
+    // the body, and a timeout that only covered the headers would leave the request hanging forever.
+    data = await response.json().catch((error) => {
+      if (requestSignal?.aborted) throw requestSignal.reason || error;
+      return {};
+    });
   } finally {
     if (timer) clearTimeout(timer);
   }
 
-  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = data?.error?.message || `Gemini request failed with ${response.status}`;
     throw new Error(message);

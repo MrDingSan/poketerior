@@ -170,3 +170,27 @@ assert.equal(
   "Because hero's equity is well above half, betting extracts value from worse pairs and denies equity to overcards on this Q-high board.",
   "study-context disclaimers never become the verdict summary",
 );
+
+// Strategy-card decisions: action, size, and the recommendation write-up across both output contracts.
+{
+  const { extractDecision } = loadBrowserModule("analysisPresentation.js", "PokerCoachAnalysisPresentation");
+  const harrington = "## Candidate Actions\nCheck or Bet.\n\n## Recommendation\nBet roughly half‑pot (~ 15‑16) for value. The nut flush warrants a value bet.\n\n## Caveats\nStack depth unknown.";
+  const decision = extractDecision(harrington, ["Check", "Bet"]);
+  assert.equal(decision.action, "Bet");
+  assert.equal(decision.size, "Half pot · ~15–16 bb");
+  assert.match(decision.writeup, /^Bet roughly half/);
+  assert.doesNotMatch(decision.writeup, /Stack depth/, "the write-up stops at the next section");
+
+  const skillInline = "3. **Candidate Actions**:\n- **Check**: pot control.\n\n4. **Recommendation**: **Bet** with a value size of approximately **25bb (pot-sized ~29.9bb)**. Rationale: value.\n\n5. **Recorded Action Comparison**: none.";
+  const inline = extractDecision(skillInline, ["Check", "Bet"]);
+  assert.equal(inline.action, "Bet");
+  assert.equal(inline.size, "Pot · ~25 bb");
+  assert.match(inline.writeup, /^\*\*Bet\*\* with a value size/);
+
+  const skillHeading = "### 4. Recommendation\n**Action: Check.**\nIn a 3-way pot, leading is inefficient.\n\n### 5. Recorded Action Comparison\nN/A";
+  assert.deepEqual(extractDecision(skillHeading, ["Check", "Bet"]).action, "Check");
+  assert.equal(extractDecision(skillHeading, ["Check", "Bet"]).size, "", "passive actions carry no size");
+
+  const boldColon = "**Recommendation:**  \nBet **≈9 bb** (about 0.55 × pot). This size balances value.\n\n**Recorded Action Comparison:**  \nMatches.";
+  assert.equal(extractDecision(boldColon, ["Check", "Bet"]).size, "55% pot · ~9 bb");
+}

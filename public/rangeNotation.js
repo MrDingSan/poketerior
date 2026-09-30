@@ -148,12 +148,22 @@
     return classKey(cardA[0], cardB[0], cardA[1] === cardB[1] ? "s" : "o");
   }
 
+  // All 169 hand classes, high card first (AA, AKs, AKo, ... 22).
+  const ALL_HAND_CLASSES = [...RANKS].reverse().flatMap((high, i, ranks) =>
+    ranks.slice(i).flatMap((low, j) => (j === 0 ? [high + low] : [`${high}${low}s`, `${high}${low}o`])));
+
   function rangeEntries(rangeText) {
     const entries = [];
     const unrecognized = [];
     for (const token of String(rangeText || "").split(",")) {
       const trimmed = token.trim();
       if (!trimmed) continue;
+      // Words the model sometimes writes for a range with no restriction (e.g. a big blind checking its
+      // option in a limped pot). Unparsed, they read as zero combos and wipe out every later street.
+      if (/^(any\s*two(\s*cards)?|all(\s*hands)?|random|100\s*%)$/i.test(trimmed)) {
+        for (const handClass of ALL_HAND_CLASSES) entries.push({ handClass, combos: combosForClass(handClass) });
+        continue;
+      }
       const expanded = expandToken(trimmed);
       if (!expanded || !expanded.length) {
         unrecognized.push(trimmed);

@@ -11,7 +11,19 @@ assert.match(
   /importAnalysisCacheModel\.js[\s\S]*importAnalysisPrefetchModel\.js[\s\S]*app\.js/,
   "the browser must load the prefetch model before app.js",
 );
-assert.match(app, /startImportedAnalysisPrefetch\(\)/, "a successful import must start background prefetch");
+assert.match(
+  app,
+  /function renderImportedHand\(\)[\s\S]*?startImportedRequestPrefetch\(\);\n\}/,
+  "rendering an imported hand must start prefetching its key decisions",
+);
+assert.match(app, /postJsonPrefetched\("\/api\/range\/interpret"/, "the range request must pick up a prefetched response");
+assert.match(app, /postJsonPrefetched\("\/api\/analyze\/harrington"/);
+assert.match(app, /postJsonPrefetched\("\/api\/analyze\/pokerskill"/);
+assert.match(
+  app,
+  /const importGeneration = \+\+screenshotImportGeneration;[\s\S]*?cancelImportedRequestPrefetch\(\);/,
+  "a new screenshot import must cancel the previous hand's prefetch",
+);
 assert.match(app, /runImportedPrefetchEntry/, "the app must provide a queue worker");
 assert.match(app, /background:\s*true/, "prefetch must reuse the full analyzer in background mode");
 assert.match(app, /activeImportedPrefetchKey/, "running imported work must be adoptable on click");

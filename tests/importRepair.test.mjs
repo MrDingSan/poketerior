@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import {
   applyFocusedHeroHandVerification,
   repairImportedHeroHandFromNotes,
-  shouldVerifyHeroHandWithFocusedVision,
 } from "../src/analysis/importRepair.js";
 
 const repaired = repairImportedHeroHandFromNotes({
@@ -19,33 +18,6 @@ const unchanged = repairImportedHeroHandFromNotes({
 });
 
 assert.deepEqual(unchanged.heroHand, ["Ad", "6d"]);
-
-assert.equal(
-  shouldVerifyHeroHandWithFocusedVision({ site: "CoinPoker", heroHand: ["Jc", "7c"] }),
-  false,
-);
-assert.equal(
-  shouldVerifyHeroHandWithFocusedVision(
-    { site: "CoinPoker", heroHand: ["Jd", "7d"], confidenceNotes: ["Hero cards are unclear."] },
-  ),
-  true,
-);
-assert.equal(
-  shouldVerifyHeroHandWithFocusedVision(
-    { site: "Unknown", heroHand: ["Jc", "7c"] },
-    { actionIssues: [{ code: "ACTOR_CONTRADICTION" }] },
-  ),
-  true,
-);
-assert.equal(
-  shouldVerifyHeroHandWithFocusedVision({
-    site: "CoinPoker",
-    heroName: "Hero",
-    heroHand: ["Jc", "7c"],
-    players: [{ name: "Villain", isHero: true }],
-  }),
-  true,
-);
 
 const focusedRepair = applyFocusedHeroHandVerification(
   {
@@ -154,4 +126,18 @@ console.log("import repair regression checks passed");
     ] } },
   });
   assert.deepEqual(fixed.streets.preflop.actions.map((action) => [action.actor, action.position]), [["dingsan", "UTG"], ["C_Red", "MP"]]);
+}
+
+
+
+// Hand-History-1790497998567: the focused crop read the hole cards correctly as "J♥", "J♣" (symbols, not
+// letters) and the read was thrown away as invalid, leaving the broad read's Jc Js.
+{
+  const symbolRead = applyFocusedHeroHandVerification(
+    { heroName: "hero", heroHand: ["Jc", "Js"], players: [{ name: "hero", position: "BB", isHero: true }] },
+    { seat: "bottom-center", playerName: "hero", heroHand: ["J♥", "J♣"], confidence: "high" },
+  );
+  assert.deepEqual(symbolRead.heroHand, ["Jh", "Jc"]);
+  assert.equal(symbolRead.focusedHeroDecision.accepted, true);
+  console.log("suit-symbol hero read checks passed");
 }

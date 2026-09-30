@@ -19,3 +19,15 @@ assert.doesNotMatch(buildFocusedBoardPrompt(), /8s|Th/);
 const r = boardCropRegion({ width: 1040, height: 1410 });
 assert.ok(r.left + r.width <= 1040 && r.top + r.height <= 1410);
 console.log("focused board verification tests passed");
+
+// Hand-History-1790438742868: the broad read spelled tens "10s" (and got two suits wrong, leaving a
+// duplicate Ts). The crop read was right but got rejected as a rank mismatch ("1" vs "T").
+{
+  const tens = applyFocusedBoardVerification(
+    { heroHand: ["Kh", "8h"], board: { flop: ["Ks", "Qs", "7s"], turn: "10s", river: "10s" } },
+    { board: ["Ks", "Qs", "7c", "Tc", "Ts"] },
+  );
+  assert.equal(tens.decision.applied, true);
+  assert.deepEqual(tens.hand.board, { flop: ["Ks", "Qs", "7c"], turn: "Tc", river: "Ts" });
+  console.log("focused board ten-notation check passed");
+}

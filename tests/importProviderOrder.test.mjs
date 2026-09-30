@@ -55,7 +55,9 @@ async function testConfiguredOrderCanPutOpenRouterFirst() {
   const calls = mockFetch({ "generativelanguage.googleapis.com": geminiOk, "openrouter.ai": openRouterOk });
   const result = await importHandFromScreenshot({ imageBase64: "dGVzdA==", mimeType: "image/png", config: { ...baseConfig, importProviderOrder: ["openrouter", "gemini"] } });
   assert.equal(calls[0].host, "openrouter.ai", "Qwen via OpenRouter runs first");
-  assert.ok(!calls.some((call) => call.host === "generativelanguage.googleapis.com"), "Gemini is skipped once OpenRouter succeeds");
+  // The focused hero-card re-read always runs afterwards; only the main extraction follows the provider order.
+  const verifierCall = (call) => /strict poker card verifier/i.test(JSON.stringify(call.body));
+  assert.ok(!calls.some((call) => call.host === "generativelanguage.googleapis.com" && !verifierCall(call)), "Gemini is skipped once OpenRouter succeeds");
   assert.equal(result.provider, "openrouter");
   assert.equal(result.model, "qwen/qwen3-vl-32b-instruct");
   assert.equal(calls[0].body.model, "qwen/qwen3-vl-32b-instruct");

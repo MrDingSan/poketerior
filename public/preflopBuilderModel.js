@@ -61,7 +61,13 @@
     const contributions = Object.fromEntries(POSITIONS.map((position) => [position, 0]));
     contributions.SB = 1;
     contributions.BB = 2;
-    let potUnits = 3 + deadPotUnits;
+    // Live posts from other seats (a player posting a big blind to join, CoinPoker's "AUTOBB"): the chips
+    // are in the pot and count toward that seat's wager, so it can check when the action comes back.
+    const postUnitsByPosition = Object.fromEntries(
+      Object.entries(input.postUnitsByPosition || {}).filter(([position, units]) => POSITIONS.includes(position) && !["SB", "BB"].includes(position) && Number(units) > 0),
+    );
+    for (const [position, units] of Object.entries(postUnitsByPosition)) contributions[position] = Number(units);
+    let potUnits = 3 + deadPotUnits + Object.values(postUnitsByPosition).reduce((total, units) => total + Number(units), 0);
     let highestContribution = 2;
     let lastFullRaiseUnits = 2;
     let pending = new Set(POSITIONS);
@@ -143,6 +149,7 @@
       lastFullRaiseUnits,
       stackUnitsByPosition: Object.fromEntries(POSITIONS.map((position) => [position, seats[position].stackUnits])),
       deadPotUnits,
+      postUnitsByPosition,
       error: null,
     };
   }
@@ -173,6 +180,7 @@
       assumptions: options.assumptions,
       stackUnitsByPosition: options.stackUnitsByPosition,
       deadPotUnits: options.deadPotUnits,
+      postUnitsByPosition: options.postUnitsByPosition,
     });
   }
 
@@ -242,6 +250,7 @@
       assumptions: Object.fromEntries(POSITIONS.map((position) => [position, state.seats[position].assumption])),
       stackUnitsByPosition: state.stackUnitsByPosition,
       deadPotUnits: state.deadPotUnits,
+      postUnitsByPosition: state.postUnitsByPosition,
       actions: [...state.actions, { ...action }],
     });
   }
@@ -258,6 +267,7 @@
       assumptions: Object.fromEntries(POSITIONS.map((position) => [position, state.seats[position].assumption])),
       stackUnitsByPosition: state.stackUnitsByPosition,
       deadPotUnits: state.deadPotUnits,
+      postUnitsByPosition: state.postUnitsByPosition,
       actions,
     });
     return applyAction(replayed, { ...action, actor: replayed.currentActor });
@@ -273,6 +283,7 @@
       assumptions: Object.fromEntries(POSITIONS.map((seat) => [seat, state.seats[seat].assumption])),
       stackUnitsByPosition: state.stackUnitsByPosition,
       deadPotUnits: state.deadPotUnits,
+      postUnitsByPosition: state.postUnitsByPosition,
     });
   }
 
@@ -292,6 +303,7 @@
       assumptions: Object.fromEntries(POSITIONS.map((seat) => [seat, state.seats[seat].assumption])),
       stackUnitsByPosition: state.stackUnitsByPosition,
       deadPotUnits: state.deadPotUnits,
+      postUnitsByPosition: state.postUnitsByPosition,
     });
   }
 

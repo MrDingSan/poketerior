@@ -7,7 +7,9 @@
 
 PokeTerior is a street-by-street coach for no-limit hold'em. You enter a hand, either action by action or from a screenshot of a hand history. The app then works out villain ranges and combos, equity, pot odds and the legal actions at every decision. **NVIDIA Nemotron 3 Super, served through Nebius Token Factory**, uses that computed evidence to write the coaching recommendation you see.
 
-Built for the [Nebius x NVIDIA Global AI Hackathon 2026](https://nebiusglobalaihackathon.devpost.com/).
+Built for the [Nebius x NVIDIA Global AI Hackathon 2026](https://nebiusglobalaihackathon.devpost.com/) (Best Apps and Agents track).
+
+**Live demo:** https://poketerior-pm4dxk7njq-uc.a.run.app
 
 ---
 
@@ -15,6 +17,7 @@ Built for the [Nebius x NVIDIA Global AI Hackathon 2026](https://nebiusglobalaih
 
 - [How NVIDIA Nemotron is used](#how-nvidia-nemotron-is-used)
 - [How Nebius Token Factory accelerated the work](#how-nebius-token-factory-accelerated-the-work)
+- [Feedback on Nebius and NVIDIA tools](#feedback-on-nebius-and-nvidia-tools)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Using the app](#using-the-app)
@@ -39,6 +42,7 @@ Nemotron handles every piece of strategic reasoning in the product. No other mod
 **Models**
 
 - Primary: `nvidia/nemotron-3-super-120b-a12b`, a 120B-parameter hybrid MoE model with about 12B active parameters, called with `reasoning_effort: "low"` to keep answers fast.
+- Why Super: the coaching loop runs on every click, so it needs responses in seconds. Super with low reasoning effort gives the best balance of reasoning quality and latency for our prompts. Nano was faster but unreliable on long prompts (see below).
 - Optional same-provider fallback: `NEBIUS_FALLBACK_MODELS`, for example `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`. This is off by default because Nano used its whole token budget reasoning on the long range prompt and returned no content.
 
 **Safeguards on the model's output.** Every Nemotron response goes through `src/analysis/strategicOutputValidation.js` before the UI shows it. A response is rejected if it:
@@ -69,6 +73,22 @@ tests/nebiusReasoningProvider.test.mjs
 - **Usage metadata.** Every completion returns token usage, which is saved in the local analysis logs. This let us watch prompt sizes as we added retrieved context.
 
 Other services: screenshot import (vision) uses Google Gemini, with OpenRouter as an optional fallback. Both of those, plus Gemini and OpenRouter as text fallbacks, are only used when Nebius is unavailable or its answer fails validation.
+
+## Feedback on Nebius and NVIDIA tools
+
+**What worked well**
+
+- **Token Factory's OpenAI-compatible API** made integration very quick. A plain `fetch` client of about 80 lines was all we needed, and Nemotron slotted in behind our existing prompts and validators unchanged.
+- **Model choice is a config switch.** Changing `NEBIUS_MODEL` let us A/B Nemotron 3 Super against Nano on real prompts in minutes.
+- **`reasoning_effort`** is the most useful knob for an interactive app. At `low`, Super stays responsive enough for a click-by-click coaching loop and still produces sound poker reasoning.
+- **Usage metadata on every completion** made it easy to track prompt growth as we added retrieved context.
+
+**What could be better**
+
+- **Nemotron 3 Nano spent its whole token budget reasoning.** On our long range-interpretation prompt, Nano used all of `max_tokens` on reasoning and returned empty `content`, with no error. It would help to have a separate budget for reasoning versus answer tokens, a documented default split, or a `finish_reason` that says the reasoning ran out of budget. That would make the smaller models safer to use as fast fallbacks.
+- **Documentation on reasoning output.** A short guide would help, covering how reasoning tokens are returned and billed for each Nemotron model and how `reasoning_effort` changes latency and token use.
+- **Structured output.** Our range interpreter needs strict JSON. Guaranteed JSON-schema output for Nemotron on Token Factory would let us drop some of our defensive parsing.
+- **Hosting.** We deployed the web app on Google Cloud Run because it was the path we already knew. A worked "deploy a Node web app next to Token Factory" example for Nebius Serverless would make it easier to keep the whole stack on Nebius.
 
 ## Quick start
 

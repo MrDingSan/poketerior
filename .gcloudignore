@@ -1,0 +1,14 @@
+# Upload context for Cloud Build (mirrors .dockerignore; keeps secrets and local state off GCP).
+.git
+.gcloudignore
+node_modules/
+public/vendor/tesseract/
+logs/
+tmp/
+.env
+.env.*
+.worktrees/
+.claude/
+.superpowers/
+*.DS_Store
+resources/test_screenshots/

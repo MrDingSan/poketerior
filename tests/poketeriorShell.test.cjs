@@ -25,7 +25,6 @@ for (const id of [
   "preflopTimeline",
   "postflopTimeline",
   "rangeComboCount",
-  "recommendation",
 ]) {
   assert.match(html, new RegExp(`id="${id}"`), `the refactor should preserve the ${id} behavior hook`);
 }
